@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Baseline: deny everything by default. Later tickets add scoped
+    // allow rules for teachers/courses/roster/sessions/attendance.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
