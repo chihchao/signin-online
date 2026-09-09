@@ -2,8 +2,59 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Baseline: deny everything by default. Later tickets add scoped
-    // allow rules for teachers/courses/roster/sessions/attendance.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isWhitelistedTeacher() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/teachers/$(request.auth.token.email));
+    }
+
+    function isCourseTeacher() {
+      return isSignedIn() &&
+        request.auth.token.email in resource.data.teacherEmails;
+    }
+
+    // Emails newly added to teacherEmails by this write (empty for
+    // updates that don't touch teacherEmails, or that only remove
+    // entries).
+    function addedTeacherEmails() {
+      return request.resource.data.teacherEmails.removeAll(resource.data.teacherEmails);
+    }
+
+    function isValidTeacherEmailsChange() {
+      let added = addedTeacherEmails();
+      return request.resource.data.teacherEmails.size() > 0 &&
+        (added.size() == 0 ||
+          (added.size() == 1 &&
+            exists(/databases/$(database)/documents/teachers/$(added[0]))));
+    }
+
+    function isValidQrExpirySeconds() {
+      return request.resource.data.qrExpirySeconds is int &&
+        request.resource.data.qrExpirySeconds > 0;
+    }
+
+    // Only teacherEmails and qrExpirySeconds may change on update; the
+    // rest of the course's identity is immutable once created.
+    function onlyMutableFieldsChanged() {
+      return request.resource.data.name == resource.data.name &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    match /courses/{courseId} {
+      allow create: if isWhitelistedTeacher() &&
+        request.resource.data.teacherEmails == [request.auth.token.email] &&
+        isValidQrExpirySeconds();
+      allow read: if isCourseTeacher();
+      allow update: if isCourseTeacher() &&
+        isValidTeacherEmailsChange() &&
+        isValidQrExpirySeconds() &&
+        onlyMutableFieldsChanged();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

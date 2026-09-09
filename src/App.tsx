@@ -1,3 +1,4 @@
+import { CourseManager } from './CourseManager'
 import { useAuthUser } from './firebase/useAuthUser'
 
 function App() {
@@ -11,6 +12,7 @@ function App() {
           <button type="button" onClick={() => signOut()}>
             登出
           </button>
+          {user.email && <CourseManager teacherEmail={user.email} />}
         </>
       ) : (
         <button type="button" onClick={() => signIn()}>
