@@ -44,6 +44,12 @@ service cloud.firestore {
         request.resource.data.createdAt == resource.data.createdAt;
     }
 
+    function isTeacherOfCourse(courseId) {
+      return isSignedIn() &&
+        request.auth.token.email in
+          get(/databases/$(database)/documents/courses/$(courseId)).data.teacherEmails;
+    }
+
     match /courses/{courseId} {
       allow create: if isWhitelistedTeacher() &&
         request.resource.data.teacherEmails == [request.auth.token.email] &&
@@ -53,6 +59,10 @@ service cloud.firestore {
         isValidTeacherEmailsChange() &&
         isValidQrExpirySeconds() &&
         onlyMutableFieldsChanged();
+
+      match /roster/{studentEmail} {
+        allow read, write: if isTeacherOfCourse(courseId);
+      }
     }
 
     match /{document=**} {

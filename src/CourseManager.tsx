@@ -8,6 +8,7 @@ import {
   updateQrExpirySeconds,
   type Course,
 } from './firebase/coursesService'
+import { addRosterStudent, importRoster, listRoster, removeRosterStudent } from './firebase/rosterService'
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -193,6 +194,104 @@ function CourseSettings({ course, onChanged }: CourseSettingsProps) {
           />
         </label>
         <button type="submit">儲存</button>
+      </form>
+
+      {error && <p role="alert">{error}</p>}
+
+      <RosterManager courseId={course.id} />
+    </section>
+  )
+}
+
+interface RosterManagerProps {
+  courseId: string
+}
+
+function RosterManager({ courseId }: RosterManagerProps) {
+  const [roster, setRoster] = useState<string[]>([])
+  const [pasteText, setPasteText] = useState('')
+  const [newStudentEmail, setNewStudentEmail] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  async function refreshRoster() {
+    setRoster(await listRoster(db, courseId))
+  }
+
+  useEffect(() => {
+    refreshRoster().catch((err) => setError(describeError(err)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId])
+
+  async function handleImport(event: React.FormEvent) {
+    event.preventDefault()
+    if (!pasteText.trim()) return
+    setError(null)
+    try {
+      await importRoster(db, courseId, pasteText)
+      setPasteText('')
+      await refreshRoster()
+    } catch (err) {
+      setError(describeError(err))
+    }
+  }
+
+  async function handleAddStudent(event: React.FormEvent) {
+    event.preventDefault()
+    if (!newStudentEmail.trim()) return
+    setError(null)
+    try {
+      await addRosterStudent(db, courseId, newStudentEmail.trim())
+      setNewStudentEmail('')
+      await refreshRoster()
+    } catch (err) {
+      setError(describeError(err))
+    }
+  }
+
+  async function handleRemoveStudent(email: string) {
+    setError(null)
+    try {
+      await removeRosterStudent(db, courseId, email)
+      await refreshRoster()
+    } catch (err) {
+      setError(describeError(err))
+    }
+  }
+
+  return (
+    <section>
+      <h4>選課名單</h4>
+      <ul>
+        {roster.map((email) => (
+          <li key={email}>
+            {email}
+            <button type="button" onClick={() => handleRemoveStudent(email)}>
+              移除
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <form onSubmit={handleAddStudent}>
+        <label>
+          新增學生 email
+          <input
+            value={newStudentEmail}
+            onChange={(event) => setNewStudentEmail(event.target.value)}
+          />
+        </label>
+        <button type="submit">新增</button>
+      </form>
+
+      <form onSubmit={handleImport}>
+        <label>
+          貼上選課名單（每行一個 email）
+          <textarea
+            value={pasteText}
+            onChange={(event) => setPasteText(event.target.value)}
+          />
+        </label>
+        <button type="submit">批次匯入</button>
       </form>
 
       {error && <p role="alert">{error}</p>}
