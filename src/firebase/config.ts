@@ -15,7 +15,11 @@ export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 
-if (import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
+// import.meta.env.DEV is a Vite built-in: true only for `vite`/`npm run dev`,
+// always false for `vite build` (including a build run on a developer's own
+// machine). Unlike a custom VITE_* env var, this can never leak an
+// emulator-pointed build into a production deploy.
+if (import.meta.env.DEV) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
   connectFirestoreEmulator(db, '127.0.0.1', 8080)
 }
