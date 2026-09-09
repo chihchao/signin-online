@@ -65,6 +65,32 @@ service cloud.firestore {
       }
     }
 
+    // Points a course at the session its "開始點名" flow should resume,
+    // so concurrent start calls (e.g. two co-teachers) can be resolved
+    // atomically in a single transaction instead of a query-then-create
+    // race. See sessionsService.startOrResumeSession.
+    match /activeSessions/{courseId} {
+      allow read, write: if isTeacherOfCourse(courseId);
+    }
+
+    match /sessions/{sessionId} {
+      allow create: if isTeacherOfCourse(request.resource.data.courseId) &&
+        request.resource.data.createdBy == request.auth.token.email &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.endedAt == null;
+      allow read: if isTeacherOfCourse(resource.data.courseId);
+
+      match /tokens/{tokenId} {
+        function sessionCourseId() {
+          return get(/databases/$(database)/documents/sessions/$(sessionId)).data.courseId;
+        }
+
+        allow create: if isTeacherOfCourse(sessionCourseId()) &&
+          request.resource.data.createdAt == request.time;
+        allow read: if isTeacherOfCourse(sessionCourseId());
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

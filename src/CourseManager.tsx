@@ -9,10 +9,8 @@ import {
   type Course,
 } from './firebase/coursesService'
 import { addRosterStudent, importRoster, listRoster, removeRosterStudent } from './firebase/rosterService'
-
-function describeError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
+import { ProjectionView } from './ProjectionView'
+import { describeError } from './errors'
 
 interface CourseManagerProps {
   teacherEmail: string
@@ -85,6 +83,7 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
         <CourseSettings
           key={selectedCourse.id}
           course={selectedCourse}
+          teacherEmail={teacherEmail}
           onChanged={refreshCourses}
         />
       )}
@@ -94,14 +93,16 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
 
 interface CourseSettingsProps {
   course: Course
+  teacherEmail: string
   onChanged: () => Promise<void>
 }
 
-function CourseSettings({ course, onChanged }: CourseSettingsProps) {
+function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps) {
   const [newTeacherEmail, setNewTeacherEmail] = useState('')
   const [qrExpirySeconds, setQrExpirySeconds] = useState(course.qrExpirySeconds)
   const [lastSeenQrExpirySeconds, setLastSeenQrExpirySeconds] = useState(course.qrExpirySeconds)
   const [error, setError] = useState<string | null>(null)
+  const [isProjecting, setIsProjecting] = useState(false)
 
   // Adjust local draft state when the underlying course document changes
   // (e.g. another teacher edited it), without discarding an in-progress
@@ -152,9 +153,24 @@ function CourseSettings({ course, onChanged }: CourseSettingsProps) {
 
   const isLastTeacher = course.teacherEmails.length <= 1
 
+  if (isProjecting) {
+    return (
+      <ProjectionView
+        courseId={course.id}
+        courseName={course.name}
+        teacherEmail={teacherEmail}
+        onClose={() => setIsProjecting(false)}
+      />
+    )
+  }
+
   return (
     <section>
       <h3>{course.name} 設定</h3>
+
+      <button type="button" onClick={() => setIsProjecting(true)}>
+        開始點名
+      </button>
 
       <h4>共同授課教師</h4>
       <ul>
