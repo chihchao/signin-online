@@ -24,8 +24,8 @@ Thumbs.db
 *.sln
 *.sw?
 
-# Environment variables (Firebase config, API keys)
-.env
+# Local-only environment overrides / secrets. The Firebase Web SDK
+# config itself is committed in .env (see that file for why).
 .env.local
 .env.*.local
 
