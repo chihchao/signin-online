@@ -1,11 +1,13 @@
 import {
   GoogleAuthProvider,
+  getRedirectResult,
   onAuthStateChanged,
-  signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth'
 import { useEffect, useState } from 'react'
+import { describeError } from '../errors'
 import { auth } from './config'
 
 export function useAuthUser() {
@@ -13,17 +15,38 @@ export function useAuthUser() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    return onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser as User | null)
+    let cancelled = false
+
+    // signInWithPopup relies on sessionStorage being shared between the
+    // popup and opener, which mobile Safari partitions away — the
+    // primary way students reach this app is scanning a QR code, which
+    // opens mobile Safari, so signInWithRedirect is required here, not
+    // just a preference. getRedirectResult() picks up the result (or
+    // error) once the browser navigates back from Google.
+    getRedirectResult(auth).catch((err) => {
+      if (!cancelled) setError(describeError(err))
     })
+
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      if (cancelled) return
+      setUser(nextUser as User | null)
+      // A successful sign-in supersedes any error from a previous
+      // attempt (including a stale getRedirectResult rejection above).
+      if (nextUser) setError(null)
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [])
 
   async function signIn() {
     setError(null)
     try {
-      await signInWithPopup(auth, new GoogleAuthProvider())
+      await signInWithRedirect(auth, new GoogleAuthProvider())
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(describeError(err))
     }
   }
 
@@ -32,7 +55,7 @@ export function useAuthUser() {
     try {
       await firebaseSignOut(auth)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(describeError(err))
     }
   }
 

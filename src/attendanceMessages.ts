@@ -14,3 +14,20 @@ export function describeAttendanceResult(result: SubmitAttendanceResult): string
       return 'QR Code 已過期，請重新掃描目前畫面上的 QR Code'
   }
 }
+
+// Whether retrying with the same sessionId/tokenId from the current
+// page could plausibly succeed. Only 'not-in-roster' is retryable —
+// switching Google account is a legitimate in-page recovery; every
+// other status is tied to this specific link/token and can only be
+// fixed by rescanning a fresh QR code (or the class is simply over).
+export function isRetryable(result: SubmitAttendanceResult): boolean {
+  switch (result.status) {
+    case 'not-in-roster':
+      return true
+    case 'success':
+    case 'already-checked-in':
+    case 'session-ended':
+    case 'expired':
+      return false
+  }
+}

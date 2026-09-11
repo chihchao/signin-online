@@ -6,6 +6,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Roster/attendance doc ids and studentEmail fields are always
+    // lowercased (see rosterService/attendanceService), but a Google ID
+    // token's email claim isn't guaranteed to be, so every comparison
+    // against them goes through this.
+    function authEmail() {
+      return request.auth.token.email.lower();
+    }
+
     function isWhitelistedTeacher() {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/teachers/$(request.auth.token.email));
@@ -50,6 +58,11 @@ service cloud.firestore {
           get(/databases/$(database)/documents/courses/$(courseId)).data.teacherEmails;
     }
 
+    function isEnrolledStudent(courseId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/courses/$(courseId)/roster/$(authEmail()));
+    }
+
     match /courses/{courseId} {
       allow create: if isWhitelistedTeacher() &&
         request.resource.data.teacherEmails == [request.auth.token.email] &&
@@ -68,7 +81,7 @@ service cloud.firestore {
         // doc ids are always lowercased (see rosterService), but
         // Google's auth token email isn't guaranteed to be, so compare
         // case-insensitively.
-        allow get: if isSignedIn() && request.auth.token.email.lower() == studentEmail;
+        allow get: if isSignedIn() && authEmail() == studentEmail;
       }
     }
 
@@ -85,12 +98,16 @@ service cloud.firestore {
         request.resource.data.createdBy == request.auth.token.email &&
         request.resource.data.createdAt == request.time &&
         request.resource.data.endedAt == null;
-      // Listing (querying) sessions stays teacher-only. Any signed-in
-      // user may fetch one session by its exact id — needed by the
-      // student check-in flow to read endedAt/courseId — since the
-      // id itself is only ever learned by scanning a course's QR code.
+      // Listing (querying) sessions stays teacher-only. A course's
+      // teacher or an enrolled student may fetch one session by its
+      // exact id — needed by the student check-in flow to read
+      // endedAt/courseId. `resource != null` guards the get-of-a-
+      // nonexistent-id case (a garbage/tampered check-in link) so that
+      // cleanly evaluates to a deny instead of erroring on
+      // resource.data being unset.
       allow list: if isTeacherOfCourse(resource.data.courseId);
-      allow get: if isSignedIn();
+      allow get: if resource != null &&
+        (isTeacherOfCourse(resource.data.courseId) || isEnrolledStudent(resource.data.courseId));
 
       match /tokens/{tokenId} {
         function sessionCourseId() {
@@ -112,7 +129,7 @@ service cloud.firestore {
       return isSignedIn() &&
         attendanceId == data.sessionId + '_' + data.studentEmail &&
         data.keys().hasOnly(['sessionId', 'courseId', 'studentEmail', 'tokenId', 'status', 'timestamp']) &&
-        data.studentEmail == request.auth.token.email.lower() &&
+        data.studentEmail == authEmail() &&
         data.status == 'present' &&
         data.timestamp == request.time &&
         data.courseId == session.courseId &&
@@ -125,9 +142,7 @@ service cloud.firestore {
       // A student may read only their own attendance records (this
       // also covers the "did I already check in" query used before
       // writing, and doubles as the seam #8's self-check page reads).
-      // studentEmail is always stored lowercased (see below), so
-      // compare case-insensitively against the auth token's email.
-      allow read: if isSignedIn() && request.auth.token.email.lower() == resource.data.studentEmail;
+      allow read: if isSignedIn() && authEmail() == resource.data.studentEmail;
       allow create: if isValidAttendanceCreate(attendanceId);
     }
 

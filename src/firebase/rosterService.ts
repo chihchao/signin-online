@@ -7,6 +7,7 @@ import {
   setDoc,
   writeBatch,
 } from 'firebase/firestore'
+import { normalizeEmail } from '../email'
 
 // Deliberately simple: just enough to reject obvious junk (no '@', stray
 // whitespace, or a '/' that would otherwise be split into extra Firestore
@@ -21,7 +22,7 @@ export function parseEmailList(text: string): string[] {
   const seen = new Set<string>()
   const emails: string[] = []
   for (const rawLine of text.split(/\r?\n/)) {
-    const email = rawLine.trim().toLowerCase()
+    const email = normalizeEmail(rawLine)
     if (email.length === 0 || seen.has(email) || !isValidEmail(email)) continue
     seen.add(email)
     emails.push(email)
@@ -34,7 +35,7 @@ function rosterDoc(db: Firestore, courseId: string, email: string) {
 }
 
 function normalizeEmailOrThrow(email: string): string {
-  const normalized = email.trim().toLowerCase()
+  const normalized = normalizeEmail(email)
   if (!isValidEmail(normalized)) {
     throw new Error(`不是有效的 email：${email}`)
   }

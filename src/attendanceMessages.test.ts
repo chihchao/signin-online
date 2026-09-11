@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { describeAttendanceResult } from './attendanceMessages'
+import { describeAttendanceResult, isRetryable } from './attendanceMessages'
+
+const ALL_STATUSES = [
+  'success',
+  'already-checked-in',
+  'not-in-roster',
+  'session-ended',
+  'expired',
+] as const
 
 describe('describeAttendanceResult', () => {
   it.each([
@@ -13,8 +21,18 @@ describe('describeAttendanceResult', () => {
   })
 
   it('gives every status a unique message', () => {
-    const statuses = ['success', 'already-checked-in', 'not-in-roster', 'session-ended', 'expired'] as const
-    const messages = statuses.map((status) => describeAttendanceResult({ status }))
-    expect(new Set(messages).size).toBe(statuses.length)
+    const messages = ALL_STATUSES.map((status) => describeAttendanceResult({ status }))
+    expect(new Set(messages).size).toBe(ALL_STATUSES.length)
+  })
+})
+
+describe('isRetryable', () => {
+  it('is only retryable for not-in-roster', () => {
+    expect(isRetryable({ status: 'not-in-roster' })).toBe(true)
+
+    for (const status of ALL_STATUSES) {
+      if (status === 'not-in-roster') continue
+      expect(isRetryable({ status })).toBe(false)
+    }
   })
 })

@@ -1,12 +1,23 @@
+import { useState } from 'react'
 import { CheckinView } from './CheckinView'
 import { CourseManager } from './CourseManager'
 import { useAuthUser } from './firebase/useAuthUser'
 
-function App() {
-  const { user, error, signIn, signOut } = useAuthUser()
+function readCheckinParams(): { sessionId: string; tokenId: string } | null {
   const params = new URLSearchParams(window.location.search)
   const sessionId = params.get('session')
   const tokenId = params.get('token')
+  return sessionId && tokenId ? { sessionId, tokenId } : null
+}
+
+function App() {
+  const { user, error, signIn, signOut } = useAuthUser()
+  const [checkinParams, setCheckinParams] = useState(readCheckinParams)
+
+  function leaveCheckin() {
+    window.history.replaceState(null, '', window.location.pathname)
+    setCheckinParams(null)
+  }
 
   return (
     <main>
@@ -16,11 +27,21 @@ function App() {
           <button type="button" onClick={() => signOut()}>
             登出
           </button>
-          {user.email && sessionId && tokenId ? (
-            <CheckinView sessionId={sessionId} tokenId={tokenId} studentEmail={user.email} />
-          ) : (
-            user.email && <CourseManager teacherEmail={user.email} />
-          )}
+          {user.email &&
+            (checkinParams ? (
+              <>
+                <CheckinView
+                  sessionId={checkinParams.sessionId}
+                  tokenId={checkinParams.tokenId}
+                  studentEmail={user.email}
+                />
+                <button type="button" onClick={leaveCheckin}>
+                  離開簽到頁
+                </button>
+              </>
+            ) : (
+              <CourseManager teacherEmail={user.email} />
+            ))}
         </>
       ) : (
         <button type="button" onClick={() => signIn()}>

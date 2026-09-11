@@ -5,13 +5,15 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { doc, setDoc, type Firestore } from 'firebase/firestore'
+import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore'
 import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createToken, startOrResumeSession } from './sessionsService'
 
 const TEACHER = 'teacher@example.com'
 const OTHER_TEACHER = 'other-teacher@example.com'
+const ENROLLED_STUDENT = 'enrolled-student@example.com'
+const UNRELATED_USER = 'unrelated-user@example.com'
 
 describe('sessionsService (against Firestore rules via emulator)', () => {
   let testEnv: RulesTestEnvironment
@@ -103,5 +105,27 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
     const sessionId = await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
 
     await assertFails(createToken(dbAs(OTHER_TEACHER), sessionId))
+  })
+
+  it('lets an enrolled student read a session (needed for the check-in flow)', async () => {
+    await seedCourse('course-1', [TEACHER])
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore
+      await setDoc(doc(db, 'courses', 'course-1', 'roster', ENROLLED_STUDENT), {})
+    })
+    const sessionId = await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
+
+    await assertSucceeds(getDoc(doc(dbAs(ENROLLED_STUDENT), 'sessions', sessionId)))
+  })
+
+  it('denies a signed-in user unrelated to the course from reading its session', async () => {
+    await seedCourse('course-1', [TEACHER])
+    const sessionId = await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
+
+    await assertFails(getDoc(doc(dbAs(UNRELATED_USER), 'sessions', sessionId)))
+  })
+
+  it('cleanly denies (rather than erroring) a read of a session id that does not exist', async () => {
+    await assertFails(getDoc(doc(dbAs(UNRELATED_USER), 'sessions', 'no-such-session')))
   })
 })

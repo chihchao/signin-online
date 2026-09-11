@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { describeAttendanceResult } from './attendanceMessages'
+import { describeAttendanceResult, isRetryable } from './attendanceMessages'
 import { describeError } from './errors'
 import { db } from './firebase/config'
 import { submitAttendance, type SubmitAttendanceResult } from './firebase/attendanceService'
@@ -33,7 +33,7 @@ export function CheckinView({ sessionId, tokenId, studentEmail }: CheckinViewPro
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={isSubmitting || (result !== null && result.status !== 'not-in-roster')}
+        disabled={isSubmitting || (result !== null && !isRetryable(result))}
       >
         送出簽到
       </button>
