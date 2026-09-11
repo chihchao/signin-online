@@ -22,6 +22,7 @@ import {
   addAttendanceRecord,
   deleteAttendanceRecord,
   listAttendanceForSession,
+  listAttendanceForStudent,
   submitAttendance,
   updateAttendanceStatus,
 } from './attendanceService'
@@ -430,6 +431,57 @@ describe('attendanceService (against Firestore rules via emulator)', () => {
         updateDoc(doc(teacherDb, 'attendance', `${SESSION_ID}_${STUDENT}`), {
           studentEmail: OTHER_STUDENT,
         }),
+      )
+    })
+  })
+
+  describe('student self-check page (issue #9)', () => {
+    const OTHER_COURSE_ID = 'course-2'
+    const OTHER_SESSION_ID = 'session-2'
+
+    async function seedSecondCourseSession() {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        await setDoc(doc(db, 'courses', OTHER_COURSE_ID), {
+          name: '第二堂課',
+          teacherEmails: [TEACHER],
+          qrExpirySeconds: QR_EXPIRY_SECONDS,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          createdBy: TEACHER,
+        })
+        await setDoc(doc(db, 'courses', OTHER_COURSE_ID, 'roster', STUDENT), {})
+        await setDoc(doc(db, 'sessions', OTHER_SESSION_ID), {
+          courseId: OTHER_COURSE_ID,
+          createdBy: TEACHER,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          endedAt: null,
+        })
+      })
+    }
+
+    it('lets a student list their own attendance records across every course they are in', async () => {
+      await seedScenario({ tokenAgeSeconds: 5 })
+      await seedSecondCourseSession()
+      await submitAttendance(dbAs(STUDENT), SESSION_ID, 'token-1', STUDENT)
+      await addAttendanceRecord(dbAs(TEACHER), OTHER_SESSION_ID, OTHER_COURSE_ID, STUDENT, 'leave')
+
+      const records = await assertSucceeds(listAttendanceForStudent(dbAs(STUDENT), STUDENT))
+
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ courseId: COURSE_ID, sessionId: SESSION_ID, status: 'present' }),
+          expect.objectContaining({ courseId: OTHER_COURSE_ID, sessionId: OTHER_SESSION_ID, status: 'leave' }),
+        ]),
+      )
+      expect(records).toHaveLength(2)
+    })
+
+    it("denies querying another student's attendance records directly", async () => {
+      await seedScenario({ tokenAgeSeconds: 5 })
+      await submitAttendance(dbAs(STUDENT), SESSION_ID, 'token-1', STUDENT)
+
+      await assertFails(
+        getDocs(query(collection(dbAs(OTHER_STUDENT), 'attendance'), where('studentEmail', '==', STUDENT))),
       )
     })
   })

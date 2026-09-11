@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ALL_STATUSES, STATUS_LABELS } from './attendanceStatusLabels'
 import { describeError } from './errors'
 import { db } from './firebase/config'
 import {
@@ -9,16 +10,6 @@ import {
   type AttendanceStatus,
 } from './firebase/attendanceService'
 import { listRoster } from './firebase/rosterService'
-
-const STATUS_LABELS: Record<AttendanceStatus, string> = {
-  present: '出席',
-  leave: '請假',
-  'official-leave': '公假',
-  exempt: '免簽',
-  absent: '缺席',
-}
-
-const ALL_STATUSES = Object.keys(STATUS_LABELS) as AttendanceStatus[]
 
 interface RosterRow {
   email: string

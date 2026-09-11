@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   type Firestore,
+  getDoc,
   getDocs,
   query,
   serverTimestamp,
@@ -11,6 +12,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
+import { isPermissionDeniedError } from './errors'
 
 export interface Course {
   id: string
@@ -47,6 +49,24 @@ export async function listMyCourses(db: Firestore, teacherEmail: string): Promis
     id: docSnapshot.id,
     ...(docSnapshot.data() as Omit<Course, 'id'>),
   }))
+}
+
+// Fetches a single course by id (e.g. to show its name on the
+// self-check page) rather than listMyCourses' teacher-only query. A
+// student who was later removed from the roster can still have old
+// attendance records pointing at this course but can no longer read
+// it (isEnrolledStudent() rules check) — treated the same as "not
+// found" rather than surfacing a permission error to the caller.
+export async function getCourse(db: Firestore, courseId: string): Promise<Course | null> {
+  let snapshot
+  try {
+    snapshot = await getDoc(doc(db, 'courses', courseId))
+  } catch (err) {
+    if (isPermissionDeniedError(err)) return null
+    throw err
+  }
+  if (!snapshot.exists()) return null
+  return { id: snapshot.id, ...(snapshot.data() as Omit<Course, 'id'>) }
 }
 
 export async function addCourseTeacher(

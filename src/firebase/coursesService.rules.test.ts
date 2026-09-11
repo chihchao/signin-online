@@ -8,7 +8,14 @@ import {
 import { doc, getDoc, setDoc, updateDoc, type Firestore } from 'firebase/firestore'
 import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { addCourseTeacher, createCourse, listMyCourses, removeCourseTeacher, updateQrExpirySeconds } from './coursesService'
+import {
+  addCourseTeacher,
+  createCourse,
+  getCourse,
+  listMyCourses,
+  removeCourseTeacher,
+  updateQrExpirySeconds,
+} from './coursesService'
 
 const TEACHER = 'teacher@example.com'
 const OTHER_TEACHER = 'other-teacher@example.com'
@@ -138,6 +145,25 @@ describe('coursesService (against Firestore rules via emulator)', () => {
 
     await assertSucceeds(getDoc(doc(dbAs(TEACHER), 'courses', 'course-1')))
     await assertFails(getDoc(doc(dbAs(STUDENT), 'courses', 'course-1')))
+  })
+
+  it("lets an enrolled student fetch their course's name (needed by the self-check page, issue #9)", async () => {
+    await seedTeachers(TEACHER)
+    await seedCourse('course-1', [TEACHER])
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore
+      await setDoc(doc(db, 'courses', 'course-1', 'roster', STUDENT), {})
+    })
+
+    const course = await assertSucceeds(getCourse(dbAs(STUDENT), 'course-1'))
+    expect(course).toEqual(expect.objectContaining({ id: 'course-1', name: '測試課程' }))
+  })
+
+  it("returns null (not a thrown error) for a course the student is no longer enrolled in — e.g. after they've been removed from the roster but still have an old attendance record pointing at it", async () => {
+    await seedTeachers(TEACHER)
+    await seedCourse('course-1', [TEACHER])
+
+    await expect(getCourse(dbAs(STUDENT), 'course-1')).resolves.toBeNull()
   })
 
   it('denies clearing teacherEmails to empty (would permanently orphan the course)', async () => {

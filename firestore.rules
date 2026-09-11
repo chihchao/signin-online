@@ -68,6 +68,10 @@ service cloud.firestore {
         request.resource.data.teacherEmails == [request.auth.token.email] &&
         isValidQrExpirySeconds();
       allow read: if isCourseTeacher();
+      // An enrolled student may fetch (not list/browse) a course they're
+      // in by its known id — needed by the self-check page (#9) to show
+      // the course name next to each attendance record.
+      allow get: if isEnrolledStudent(courseId);
       allow update: if isCourseTeacher() &&
         isValidTeacherEmailsChange() &&
         isValidQrExpirySeconds() &&

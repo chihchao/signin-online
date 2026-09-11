@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CheckinView } from './CheckinView'
 import { CourseManager } from './CourseManager'
 import { useAuthUser } from './firebase/useAuthUser'
+import { MyAttendanceView } from './MyAttendanceView'
 
 function readCheckinParams(): { sessionId: string; tokenId: string } | null {
   const params = new URLSearchParams(window.location.search)
@@ -13,6 +14,7 @@ function readCheckinParams(): { sessionId: string; tokenId: string } | null {
 function App() {
   const { user, error, signIn, signOut } = useAuthUser()
   const [checkinParams, setCheckinParams] = useState(readCheckinParams)
+  const [showMyAttendance, setShowMyAttendance] = useState(false)
 
   function leaveCheckin() {
     window.history.replaceState(null, '', window.location.pathname)
@@ -40,7 +42,16 @@ function App() {
                 </button>
               </>
             ) : (
-              <CourseManager teacherEmail={user.email} />
+              <>
+                <button type="button" onClick={() => setShowMyAttendance((current) => !current)}>
+                  {showMyAttendance ? '返回課程管理' : '我的出席紀錄'}
+                </button>
+                {showMyAttendance ? (
+                  <MyAttendanceView studentEmail={user.email} />
+                ) : (
+                  <CourseManager teacherEmail={user.email} />
+                )}
+              </>
             ))}
         </>
       ) : (

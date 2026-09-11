@@ -9,6 +9,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  type Timestamp,
   updateDoc,
   where,
 } from 'firebase/firestore'
@@ -171,6 +172,37 @@ export async function listAttendanceForSession(
       studentEmail: data.studentEmail as string,
       status: data.status as AttendanceStatus,
       tokenId: data.tokenId as string | undefined,
+    }
+  })
+}
+
+export interface StudentAttendanceRecord {
+  sessionId: string
+  courseId: string
+  status: AttendanceStatus
+  timestamp: Date | null
+}
+
+// 學生自查頁 (issue #9): a student's own attendance records across
+// every course they're in. studentEmail is always filtered by an
+// equality clause here — required for Firestore to prove the rule
+// (isSignedIn() && authEmail() == resource.data.studentEmail) without
+// reading every attendance document in the collection.
+export async function listAttendanceForStudent(
+  db: Firestore,
+  studentEmailRaw: string,
+): Promise<StudentAttendanceRecord[]> {
+  const studentEmail = normalizeEmail(studentEmailRaw)
+  const snapshot = await getDocs(
+    query(collection(db, 'attendance'), where('studentEmail', '==', studentEmail)),
+  )
+  return snapshot.docs.map((docSnapshot) => {
+    const data = docSnapshot.data()
+    return {
+      sessionId: data.sessionId as string,
+      courseId: data.courseId as string,
+      status: data.status as AttendanceStatus,
+      timestamp: (data.timestamp as Timestamp | null)?.toDate() ?? null,
     }
   })
 }
