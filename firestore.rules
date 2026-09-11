@@ -154,34 +154,58 @@ service cloud.firestore {
         token.createdAt > request.time - duration.value(course.qrExpirySeconds, 's');
     }
 
-    // A teacher writing on a student's behalf. Issue #7 (batch-marking
-    // absences when ending a session) only ever needs status=='absent';
-    // narrowed to exactly that rather than the full status enum #8 will
-    // need, so this doesn't ship write access #7 has no use for ahead
-    // of #8's actual (and possibly differently-shaped, e.g. an audit
-    // trail) requirements. Widen when #8 lands. timestamp still isn't
-    // pinned to request.time (manual edits may backdate, per spec) but
-    // must at least be a real Timestamp, not absent or malformed.
+    function isValidAttendanceStatus(status) {
+      return status in ['present', 'leave', 'official-leave', 'exempt', 'absent'];
+    }
+
+    // A teacher writing on a student's behalf: 補登 (add a record for a
+    // student who has none) and endSession's batch-absent pass both go
+    // through this. timestamp isn't pinned to request.time (manual
+    // edits may backdate, per spec) but must at least be a real
+    // Timestamp, not absent or malformed.
     function isValidTeacherAttendanceCreate(attendanceId) {
       let data = request.resource.data;
 
       return isTeacherOfCourse(data.courseId) &&
         isValidAttendanceDocId(attendanceId, data) &&
         data.keys().hasOnly(['sessionId', 'courseId', 'studentEmail', 'status', 'timestamp']) &&
-        data.status == 'absent' &&
+        isValidAttendanceStatus(data.status) &&
         data.timestamp is timestamp &&
         get(/databases/$(database)/documents/sessions/$(data.sessionId)).data.courseId == data.courseId &&
         exists(/databases/$(database)/documents/courses/$(data.courseId)/roster/$(data.studentEmail));
     }
 
+    // 更正狀態: a teacher may change status (and/or timestamp) on any
+    // record for their course — including one a student self-authored
+    // via check-in — but not the fields identifying which session/
+    // student/token it's about, and not smuggle in new fields. A plain
+    // (non-merge) setDoc that lands on a doc that already exists is an
+    // update too, so this must also reject one that drops or changes
+    // tokenId — otherwise a stale-read 補登 could silently overwrite
+    // and erase a student's real self-check-in.
+    function isValidAttendanceStatusUpdate() {
+      let data = request.resource.data;
+
+      return isTeacherOfCourse(resource.data.courseId) &&
+        isValidAttendanceStatus(data.status) &&
+        data.timestamp is timestamp &&
+        data.sessionId == resource.data.sessionId &&
+        data.courseId == resource.data.courseId &&
+        data.studentEmail == resource.data.studentEmail &&
+        ('tokenId' in resource.data
+          ? ('tokenId' in data && data.tokenId == resource.data.tokenId)
+          : !('tokenId' in data)) &&
+        data.keys().hasOnly(['sessionId', 'courseId', 'studentEmail', 'tokenId', 'status', 'timestamp']);
+    }
+
     match /attendance/{attendanceId} {
       // A student may read only their own attendance records (this
       // also covers the "did I already check in" query used before
-      // writing, and doubles as the seam #8's self-check page reads).
+      // writing, and doubles as the seam #9's self-check page reads).
       // A course's teacher may read every attendance record for it —
       // needed to compute "who's missing" when ending a session, and
-      // will back #8/#10's UI too. For `list` requests, Firestore's
-      // rule provability only accepts get()-based checks like
+      // backs #8/#10's UI too. For `list` requests, Firestore's rule
+      // provability only accepts get()-based checks like
       // isTeacherOfCourse() when every field they (transitively) read
       // from resource.data is also constrained by an equality filter
       // in the query — courseId here, always paired with a sessionId
@@ -189,6 +213,10 @@ service cloud.firestore {
       allow read: if isSignedIn() && authEmail() == resource.data.studentEmail;
       allow read: if isTeacherOfCourse(resource.data.courseId);
       allow create: if isValidStudentAttendanceCreate(attendanceId) || isValidTeacherAttendanceCreate(attendanceId);
+      // 更正狀態 / 刪除 (issue #8): only the course's teachers, on any
+      // record for their course regardless of who originally wrote it.
+      allow update: if isValidAttendanceStatusUpdate();
+      allow delete: if isTeacherOfCourse(resource.data.courseId);
     }
 
     match /{document=**} {

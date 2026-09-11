@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   type Firestore,
   getDoc,
@@ -8,15 +9,30 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
 } from 'firebase/firestore'
 import { normalizeEmail } from '../email'
 import { attendanceDocId } from './attendanceDocId'
 import { isPermissionDeniedError } from './errors'
 
+export type AttendanceStatus = 'present' | 'leave' | 'official-leave' | 'exempt' | 'absent'
+
+export interface AttendanceRecord {
+  studentEmail: string
+  status: AttendanceStatus
+  tokenId?: string
+}
+
 export type SubmitAttendanceResult =
   | { status: 'success' }
   | { status: 'already-checked-in' }
+  // A teacher already recorded *some* status for this student — via
+  // endSession's batch-absent pass, or a manual 補登 (issue #8) that
+  // can happen while the session is still active. Deliberately not
+  // folded into 'session-ended': that would be wrong when the session
+  // is still open and a teacher just pre-recorded something.
+  | { status: 'already-recorded' }
   | { status: 'not-in-roster' }
   | { status: 'session-ended' }
   | { status: 'expired' }
@@ -30,14 +46,8 @@ function alreadyCheckedInQuery(db: Firestore, sessionId: string, studentEmail: s
   )
 }
 
-// Only 'present' (a real self-check-in) reads as "already checked in".
-// Any other status can currently only be 'absent', and the only way a
-// student acquires one is endSession's batch pass — so it means the
-// session ended before/as they got here, not that they did anything
-// themselves. (If #8 adds teacher-authored statuses reachable while a
-// session is still active, this mapping will need revisiting.)
 function resultForExistingRecord(status: unknown): SubmitAttendanceResult {
-  return status === 'present' ? { status: 'already-checked-in' } : { status: 'session-ended' }
+  return status === 'present' ? { status: 'already-checked-in' } : { status: 'already-recorded' }
 }
 
 export async function submitAttendance(
@@ -89,14 +99,78 @@ export async function submitAttendance(
     // The write's rules re-validate everything from scratch, so a
     // denial here has a few possible causes beyond simple token
     // expiry: a concurrent submission that just committed (this
-    // student, another tab or a double-tap), or the teacher ending
-    // the session — and batch-marking this student absent — in the
-    // window between the checks above and this write. Re-check what's
-    // actually true now rather than assume.
+    // student, another tab or a double-tap), or a teacher recording
+    // something for this student — batch-absent from ending the
+    // session, or a manual 補登 — in the window between the checks
+    // above and this write. Re-check what's actually true now rather
+    // than assume.
     const recheck = await getDocs(alreadyCheckedInQuery(db, sessionId, studentEmail))
     if (!recheck.empty) {
       return resultForExistingRecord(recheck.docs[0].data().status)
     }
     return { status: 'expired' }
   }
+}
+
+// 補登: a teacher records a status for a student who has no record yet
+// for this session.
+export async function addAttendanceRecord(
+  db: Firestore,
+  sessionId: string,
+  courseId: string,
+  studentEmailRaw: string,
+  status: AttendanceStatus,
+): Promise<void> {
+  const studentEmail = normalizeEmail(studentEmailRaw)
+  await setDoc(doc(db, 'attendance', attendanceDocId(sessionId, studentEmail)), {
+    sessionId,
+    courseId,
+    studentEmail,
+    status,
+    timestamp: serverTimestamp(),
+  })
+}
+
+// 更正狀態: a teacher changes the status of an existing record (their
+// own batch/manual entry, or a student's self-check-in) without
+// touching which session/student/token it's about.
+export async function updateAttendanceStatus(
+  db: Firestore,
+  sessionId: string,
+  studentEmailRaw: string,
+  status: AttendanceStatus,
+): Promise<void> {
+  const studentEmail = normalizeEmail(studentEmailRaw)
+  await updateDoc(doc(db, 'attendance', attendanceDocId(sessionId, studentEmail)), { status })
+}
+
+export async function deleteAttendanceRecord(
+  db: Firestore,
+  sessionId: string,
+  studentEmailRaw: string,
+): Promise<void> {
+  const studentEmail = normalizeEmail(studentEmailRaw)
+  await deleteDoc(doc(db, 'attendance', attendanceDocId(sessionId, studentEmail)))
+}
+
+export async function listAttendanceForSession(
+  db: Firestore,
+  courseId: string,
+  sessionId: string,
+): Promise<AttendanceRecord[]> {
+  const snapshot = await getDocs(
+    query(
+      collection(db, 'attendance'),
+      where('courseId', '==', courseId),
+      where('sessionId', '==', sessionId),
+    ),
+  )
+  return snapshot.docs.map((docSnapshot) => {
+    const data = docSnapshot.data()
+    return {
+      studentEmail: data.studentEmail as string,
+      status: data.status as AttendanceStatus,
+      tokenId: data.tokenId as string | undefined,
+    }
+  })
 }

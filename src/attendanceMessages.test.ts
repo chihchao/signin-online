@@ -4,6 +4,7 @@ import { describeAttendanceResult, isRetryable } from './attendanceMessages'
 const ALL_STATUSES = [
   'success',
   'already-checked-in',
+  'already-recorded',
   'not-in-roster',
   'session-ended',
   'expired',
@@ -13,6 +14,7 @@ describe('describeAttendanceResult', () => {
   it.each([
     ['success', '簽到成功！'],
     ['already-checked-in', '已完成簽到'],
+    ['already-recorded', '老師已經記錄你這堂課的出席狀態'],
     ['not-in-roster', '你不在這堂課的名冊中，請切換帳號'],
     ['session-ended', '點名已結束，無法簽到'],
     ['expired', 'QR Code 已過期，請重新掃描目前畫面上的 QR Code'],

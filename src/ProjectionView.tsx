@@ -1,5 +1,6 @@
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
+import { AttendanceRecordView } from './AttendanceRecordView'
 import { buildCheckinUrl } from './checkinUrl'
 import { describeError } from './errors'
 import { db } from './firebase/config'
@@ -19,6 +20,8 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isEnding, setIsEnding] = useState(false)
+  const [hasEnded, setHasEnded] = useState(false)
+  const [isManagingAttendance, setIsManagingAttendance] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -37,7 +40,7 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
   }, [courseId, teacherEmail])
 
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId || hasEnded) return
 
     let cancelled = false
 
@@ -63,7 +66,7 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
       cancelled = true
       clearInterval(intervalId)
     }
-  }, [sessionId])
+  }, [sessionId, hasEnded])
 
   async function handleEndSession() {
     if (!sessionId) return
@@ -74,12 +77,22 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
     setError(null)
     try {
       await endSession(db, sessionId, courseId)
-      onClose()
+      setHasEnded(true)
     } catch (err) {
       setError(describeError(err))
     } finally {
       setIsEnding(false)
     }
+  }
+
+  if (isManagingAttendance && sessionId) {
+    return (
+      <AttendanceRecordView
+        courseId={courseId}
+        sessionId={sessionId}
+        onClose={() => setIsManagingAttendance(false)}
+      />
+    )
   }
 
   return (
@@ -88,13 +101,18 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
       <button type="button" onClick={onClose} disabled={isEnding}>
         關閉投影頁
       </button>
-      <button type="button" onClick={handleEndSession} disabled={!sessionId || isEnding}>
-        結束點名
+      {!hasEnded && (
+        <button type="button" onClick={handleEndSession} disabled={!sessionId || isEnding}>
+          結束點名
+        </button>
+      )}
+      <button type="button" onClick={() => setIsManagingAttendance(true)} disabled={!sessionId || isEnding}>
+        管理出席紀錄
       </button>
 
       {error && <p role="alert">{error}</p>}
 
-      {qrDataUrl && <img src={qrDataUrl} alt="簽到 QR Code" />}
+      {hasEnded ? <p>點名已結束</p> : qrDataUrl && <img src={qrDataUrl} alt="簽到 QR Code" />}
     </section>
   )
 }

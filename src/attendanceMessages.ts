@@ -6,6 +6,8 @@ export function describeAttendanceResult(result: SubmitAttendanceResult): string
       return '簽到成功！'
     case 'already-checked-in':
       return '已完成簽到'
+    case 'already-recorded':
+      return '老師已經記錄你這堂課的出席狀態'
     case 'not-in-roster':
       return '你不在這堂課的名冊中，請切換帳號'
     case 'session-ended':
@@ -26,6 +28,7 @@ export function isRetryable(result: SubmitAttendanceResult): boolean {
       return true
     case 'success':
     case 'already-checked-in':
+    case 'already-recorded':
     case 'session-ended':
     case 'expired':
       return false
