@@ -62,6 +62,13 @@ service cloud.firestore {
 
       match /roster/{studentEmail} {
         allow read, write: if isTeacherOfCourse(courseId);
+        // A student may check only their own membership (by path
+        // segment, so this is well-defined even when no such document
+        // exists) — not list or read anyone else's roster entry. Roster
+        // doc ids are always lowercased (see rosterService), but
+        // Google's auth token email isn't guaranteed to be, so compare
+        // case-insensitively.
+        allow get: if isSignedIn() && request.auth.token.email.lower() == studentEmail;
       }
     }
 
@@ -78,7 +85,12 @@ service cloud.firestore {
         request.resource.data.createdBy == request.auth.token.email &&
         request.resource.data.createdAt == request.time &&
         request.resource.data.endedAt == null;
-      allow read: if isTeacherOfCourse(resource.data.courseId);
+      // Listing (querying) sessions stays teacher-only. Any signed-in
+      // user may fetch one session by its exact id — needed by the
+      // student check-in flow to read endedAt/courseId — since the
+      // id itself is only ever learned by scanning a course's QR code.
+      allow list: if isTeacherOfCourse(resource.data.courseId);
+      allow get: if isSignedIn();
 
       match /tokens/{tokenId} {
         function sessionCourseId() {
@@ -89,6 +101,34 @@ service cloud.firestore {
           request.resource.data.createdAt == request.time;
         allow read: if isTeacherOfCourse(sessionCourseId());
       }
+    }
+
+    function isValidAttendanceCreate(attendanceId) {
+      let data = request.resource.data;
+      let session = get(/databases/$(database)/documents/sessions/$(data.sessionId)).data;
+      let course = get(/databases/$(database)/documents/courses/$(data.courseId)).data;
+      let token = get(/databases/$(database)/documents/sessions/$(data.sessionId)/tokens/$(data.tokenId)).data;
+
+      return isSignedIn() &&
+        attendanceId == data.sessionId + '_' + data.studentEmail &&
+        data.keys().hasOnly(['sessionId', 'courseId', 'studentEmail', 'tokenId', 'status', 'timestamp']) &&
+        data.studentEmail == request.auth.token.email.lower() &&
+        data.status == 'present' &&
+        data.timestamp == request.time &&
+        data.courseId == session.courseId &&
+        session.endedAt == null &&
+        exists(/databases/$(database)/documents/courses/$(data.courseId)/roster/$(data.studentEmail)) &&
+        token.createdAt > request.time - duration.value(course.qrExpirySeconds, 's');
+    }
+
+    match /attendance/{attendanceId} {
+      // A student may read only their own attendance records (this
+      // also covers the "did I already check in" query used before
+      // writing, and doubles as the seam #8's self-check page reads).
+      // studentEmail is always stored lowercased (see below), so
+      // compare case-insensitively against the auth token's email.
+      allow read: if isSignedIn() && request.auth.token.email.lower() == resource.data.studentEmail;
+      allow create: if isValidAttendanceCreate(attendanceId);
     }
 
     match /{document=**} {
