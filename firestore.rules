@@ -108,6 +108,16 @@ service cloud.firestore {
       allow list: if isTeacherOfCourse(resource.data.courseId);
       allow get: if resource != null &&
         (isTeacherOfCourse(resource.data.courseId) || isEnrolledStudent(resource.data.courseId));
+      // "結束點名": only the course's teachers, only a one-way
+      // null -> request.time transition (no re-ending, no un-ending,
+      // no backdating), and nothing else about the session may change.
+      allow update: if isTeacherOfCourse(resource.data.courseId) &&
+        resource.data.endedAt == null &&
+        request.resource.data.endedAt == request.time &&
+        request.resource.data.courseId == resource.data.courseId &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.keys().hasOnly(['courseId', 'createdBy', 'createdAt', 'endedAt']);
 
       match /tokens/{tokenId} {
         function sessionCourseId() {
@@ -120,14 +130,20 @@ service cloud.firestore {
       }
     }
 
-    function isValidAttendanceCreate(attendanceId) {
+    function isValidAttendanceDocId(attendanceId, data) {
+      return attendanceId == data.sessionId + '_' + data.studentEmail;
+    }
+
+    // A student checking themselves in: status is always 'present', the
+    // token must still be fresh, and studentEmail must be the requester.
+    function isValidStudentAttendanceCreate(attendanceId) {
       let data = request.resource.data;
       let session = get(/databases/$(database)/documents/sessions/$(data.sessionId)).data;
       let course = get(/databases/$(database)/documents/courses/$(data.courseId)).data;
       let token = get(/databases/$(database)/documents/sessions/$(data.sessionId)/tokens/$(data.tokenId)).data;
 
       return isSignedIn() &&
-        attendanceId == data.sessionId + '_' + data.studentEmail &&
+        isValidAttendanceDocId(attendanceId, data) &&
         data.keys().hasOnly(['sessionId', 'courseId', 'studentEmail', 'tokenId', 'status', 'timestamp']) &&
         data.studentEmail == authEmail() &&
         data.status == 'present' &&
@@ -138,12 +154,41 @@ service cloud.firestore {
         token.createdAt > request.time - duration.value(course.qrExpirySeconds, 's');
     }
 
+    // A teacher writing on a student's behalf. Issue #7 (batch-marking
+    // absences when ending a session) only ever needs status=='absent';
+    // narrowed to exactly that rather than the full status enum #8 will
+    // need, so this doesn't ship write access #7 has no use for ahead
+    // of #8's actual (and possibly differently-shaped, e.g. an audit
+    // trail) requirements. Widen when #8 lands. timestamp still isn't
+    // pinned to request.time (manual edits may backdate, per spec) but
+    // must at least be a real Timestamp, not absent or malformed.
+    function isValidTeacherAttendanceCreate(attendanceId) {
+      let data = request.resource.data;
+
+      return isTeacherOfCourse(data.courseId) &&
+        isValidAttendanceDocId(attendanceId, data) &&
+        data.keys().hasOnly(['sessionId', 'courseId', 'studentEmail', 'status', 'timestamp']) &&
+        data.status == 'absent' &&
+        data.timestamp is timestamp &&
+        get(/databases/$(database)/documents/sessions/$(data.sessionId)).data.courseId == data.courseId &&
+        exists(/databases/$(database)/documents/courses/$(data.courseId)/roster/$(data.studentEmail));
+    }
+
     match /attendance/{attendanceId} {
       // A student may read only their own attendance records (this
       // also covers the "did I already check in" query used before
       // writing, and doubles as the seam #8's self-check page reads).
+      // A course's teacher may read every attendance record for it —
+      // needed to compute "who's missing" when ending a session, and
+      // will back #8/#10's UI too. For `list` requests, Firestore's
+      // rule provability only accepts get()-based checks like
+      // isTeacherOfCourse() when every field they (transitively) read
+      // from resource.data is also constrained by an equality filter
+      // in the query — courseId here, always paired with a sessionId
+      // filter by every caller in this codebase.
       allow read: if isSignedIn() && authEmail() == resource.data.studentEmail;
-      allow create: if isValidAttendanceCreate(attendanceId);
+      allow read: if isTeacherOfCourse(resource.data.courseId);
+      allow create: if isValidStudentAttendanceCreate(attendanceId) || isValidTeacherAttendanceCreate(attendanceId);
     }
 
     match /{document=**} {

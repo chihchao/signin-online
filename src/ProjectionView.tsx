@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { buildCheckinUrl } from './checkinUrl'
 import { describeError } from './errors'
 import { db } from './firebase/config'
-import { createToken, startOrResumeSession } from './firebase/sessionsService'
+import { createToken, endSession, startOrResumeSession } from './firebase/sessionsService'
 
 const TOKEN_REFRESH_INTERVAL_MS = 15_000
 
@@ -18,6 +18,7 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isEnding, setIsEnding] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -64,11 +65,31 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
     }
   }, [sessionId])
 
+  async function handleEndSession() {
+    if (!sessionId) return
+    if (!window.confirm('結束點名後，學生將無法再簽到，且尚未簽到的學生會被標記為缺席。確定要結束嗎？')) {
+      return
+    }
+    setIsEnding(true)
+    setError(null)
+    try {
+      await endSession(db, sessionId, courseId)
+      onClose()
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setIsEnding(false)
+    }
+  }
+
   return (
     <section>
       <h3>{courseName} — 投影頁</h3>
-      <button type="button" onClick={onClose}>
+      <button type="button" onClick={onClose} disabled={isEnding}>
         關閉投影頁
+      </button>
+      <button type="button" onClick={handleEndSession} disabled={!sessionId || isEnding}>
+        結束點名
       </button>
 
       {error && <p role="alert">{error}</p>}

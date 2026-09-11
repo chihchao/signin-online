@@ -139,6 +139,24 @@ describe('attendanceService (against Firestore rules via emulator)', () => {
     expect(result.status).toBe('session-ended')
   })
 
+  it("returns session-ended, not already-checked-in, when an existing record is a teacher-marked absence (not this student's own check-in)", async () => {
+    await seedScenario({ tokenAgeSeconds: 5 })
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore
+      await setDoc(doc(db, 'attendance', `${SESSION_ID}_${STUDENT}`), {
+        sessionId: SESSION_ID,
+        courseId: COURSE_ID,
+        studentEmail: STUDENT,
+        status: 'absent',
+        timestamp: new Date(),
+      })
+    })
+
+    const result = await submitAttendance(dbAs(STUDENT), SESSION_ID, 'token-1', STUDENT)
+
+    expect(result.status).toBe('session-ended')
+  })
+
   it('returns already-checked-in on a second submission and does not create a duplicate document', async () => {
     await seedScenario({ tokenAgeSeconds: 5 })
     const db = dbAs(STUDENT)

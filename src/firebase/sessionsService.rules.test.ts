@@ -5,10 +5,20 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore'
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  type Firestore,
+} from 'firebase/firestore'
 import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { createToken, startOrResumeSession } from './sessionsService'
+import { submitAttendance } from './attendanceService'
+import { createToken, endSession, startOrResumeSession } from './sessionsService'
 
 const TEACHER = 'teacher@example.com'
 const OTHER_TEACHER = 'other-teacher@example.com'
@@ -127,5 +137,99 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
 
   it('cleanly denies (rather than erroring) a read of a session id that does not exist', async () => {
     await assertFails(getDoc(doc(dbAs(UNRELATED_USER), 'sessions', 'no-such-session')))
+  })
+
+  async function seedRoster(courseId: string, ...emails: string[]) {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore
+      await Promise.all(emails.map((email) => setDoc(doc(db, 'courses', courseId, 'roster', email), {})))
+    })
+  }
+
+  describe('endSession', () => {
+    const PRESENT_STUDENT = 'present-student@example.com'
+    const ABSENT_STUDENT_1 = 'absent-student-1@example.com'
+    const ABSENT_STUDENT_2 = 'absent-student-2@example.com'
+
+    it("sets endedAt and batch-marks roster members with no attendance record as 'absent', without touching existing records", async () => {
+      await seedCourse('course-1', [TEACHER])
+      await seedRoster('course-1', PRESENT_STUDENT, ABSENT_STUDENT_1, ABSENT_STUDENT_2)
+      const teacherDb = dbAs(TEACHER)
+      const sessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+      const tokenId = await createToken(teacherDb, sessionId)
+      const checkin = await submitAttendance(dbAs(PRESENT_STUDENT), sessionId, tokenId, PRESENT_STUDENT)
+      expect(checkin.status).toBe('success')
+
+      await assertSucceeds(endSession(teacherDb, sessionId, 'course-1'))
+
+      const sessionSnap = await getDoc(doc(teacherDb, 'sessions', sessionId))
+      expect(sessionSnap.data()?.endedAt).toBeTruthy()
+
+      // Reading back the full attendance list to verify outcomes isn't
+      // something this ticket gives teachers a way to do as themselves
+      // (see the rules comment on the attendance match block) — bypass
+      // rules here purely to inspect state for the assertion.
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        const attendanceSnap = await getDocs(collection(db, 'attendance'))
+        const byStudent = Object.fromEntries(
+          attendanceSnap.docs.map((d) => [d.data().studentEmail, d.data().status]),
+        )
+        expect(byStudent).toEqual({
+          [PRESENT_STUDENT]: 'present',
+          [ABSENT_STUDENT_1]: 'absent',
+          [ABSENT_STUDENT_2]: 'absent',
+        })
+      })
+    })
+
+    it('denies a student check-in after the session has ended', async () => {
+      await seedCourse('course-1', [TEACHER])
+      const teacherDb = dbAs(TEACHER)
+      const sessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+      const tokenId = await createToken(teacherDb, sessionId)
+      await endSession(teacherDb, sessionId, 'course-1')
+
+      // Added to the roster *after* the session ended, so endSession's
+      // batch-absent pass never touched them — isolates "the session
+      // itself is over" from "already got auto-marked absent by it".
+      const LATE_ADD_STUDENT = 'late-add-student@example.com'
+      await seedRoster('course-1', LATE_ADD_STUDENT)
+
+      const result = await submitAttendance(dbAs(LATE_ADD_STUDENT), sessionId, tokenId, LATE_ADD_STUDENT)
+      expect(result.status).toBe('session-ended')
+    })
+
+    it('is safe to call a second time (e.g. retrying after a partial failure) without throwing', async () => {
+      await seedCourse('course-1', [TEACHER])
+      await seedRoster('course-1', ABSENT_STUDENT_1)
+      const teacherDb = dbAs(TEACHER)
+      const sessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+      await endSession(teacherDb, sessionId, 'course-1')
+
+      await expect(endSession(teacherDb, sessionId, 'course-1')).resolves.toBeUndefined()
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        const snapshot = await getDocs(collection(db, 'attendance'))
+        expect(snapshot.size).toBe(1)
+      })
+    })
+
+    it('denies a non-course-teacher from ending a session', async () => {
+      await seedCourse('course-1', [TEACHER])
+      const sessionId = await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
+
+      await assertFails(endSession(dbAs(OTHER_TEACHER), sessionId, 'course-1'))
+    })
+
+    it('denies ending an already-ended session a second time', async () => {
+      await seedCourse('course-1', [TEACHER])
+      const teacherDb = dbAs(TEACHER)
+      const sessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+      await endSession(teacherDb, sessionId, 'course-1')
+
+      await assertFails(updateDoc(doc(teacherDb, 'sessions', sessionId), { endedAt: serverTimestamp() }))
+    })
   })
 })

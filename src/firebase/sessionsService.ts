@@ -3,9 +3,16 @@ import {
   collection,
   doc,
   type Firestore,
+  getDoc,
+  getDocs,
+  query,
   runTransaction,
   serverTimestamp,
+  updateDoc,
+  where,
+  writeBatch,
 } from 'firebase/firestore'
+import { attendanceDocId } from './attendanceDocId'
 
 export interface Session {
   id: string
@@ -58,4 +65,54 @@ export async function createToken(db: Firestore, sessionId: string): Promise<str
     createdAt: serverTimestamp(),
   })
   return tokenRef.id
+}
+
+const FIRESTORE_BATCH_LIMIT = 500
+
+// Ends the session (blocking further student check-ins) and marks
+// every roster member who still has no attendance record for it as
+// 'absent'. Ends the session *first* so there's no window where a
+// late check-in could race the "who's missing" read below.
+//
+// Safe to call again after a partial failure (e.g. the batch below
+// throwing after endedAt already committed): the endedAt update is
+// skipped once it's already set, rather than being retried into an
+// update the rules would now reject, and the roster/attendance diff
+// naturally only fills in whoever is still missing.
+export async function endSession(
+  db: Firestore,
+  sessionId: string,
+  courseId: string,
+): Promise<void> {
+  const sessionSnap = await getDoc(doc(db, 'sessions', sessionId))
+  if (sessionSnap.data()?.endedAt === null) {
+    await updateDoc(doc(db, 'sessions', sessionId), { endedAt: serverTimestamp() })
+  }
+
+  const [rosterSnap, attendanceSnap] = await Promise.all([
+    getDocs(collection(db, 'courses', courseId, 'roster')),
+    getDocs(
+      query(
+        collection(db, 'attendance'),
+        where('courseId', '==', courseId),
+        where('sessionId', '==', sessionId),
+      ),
+    ),
+  ])
+  const recordedEmails = new Set(attendanceSnap.docs.map((d) => d.data().studentEmail as string))
+  const absentEmails = rosterSnap.docs.map((d) => d.id).filter((email) => !recordedEmails.has(email))
+
+  for (let start = 0; start < absentEmails.length; start += FIRESTORE_BATCH_LIMIT) {
+    const batch = writeBatch(db)
+    for (const studentEmail of absentEmails.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+      batch.set(doc(db, 'attendance', attendanceDocId(sessionId, studentEmail)), {
+        sessionId,
+        courseId,
+        studentEmail,
+        status: 'absent',
+        timestamp: serverTimestamp(),
+      })
+    }
+    await batch.commit()
+  }
 }
