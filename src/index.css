@@ -95,20 +95,50 @@ body {
   border-bottom: 1px solid var(--color-border);
 }
 
-.app-header__account {
+.app-header__brand {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--color-primary);
+}
+
+.app-header__right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
   /* min-width:0 overrides the flex item's default auto min-width
-     (which is its content's intrinsic size) — without it the text
-     can never actually shrink, so overflow/ellipsis below does
+     (which is its content's intrinsic size) — without it the account
+     text can never actually shrink, so the ellipsis below does
      nothing and the logout button gets squeezed into wrapping
      instead. */
   min-width: 0;
   flex: 1 1 auto;
-  margin: 0;
-  font-size: 0.875rem;
-  color: var(--color-muted-foreground);
+}
+
+.app-header__account {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-header__account strong,
+.app-header__account span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-header__account strong {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.app-header__account span {
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
 }
 
 .app-header .btn {

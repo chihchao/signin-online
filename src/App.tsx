@@ -23,14 +23,23 @@ function App() {
 
   return (
     <main className="app-shell">
-      {user ? (
-        <>
-          <header className="app-header">
-            <p className="app-header__account">目前登入帳號：{user.email}</p>
+      <header className="app-header">
+        <span className="app-header__brand">課堂簽到系統</span>
+        {user && (
+          <div className="app-header__right">
+            <div className="app-header__account" title={user.displayName ? `${user.displayName} ${user.email}` : user.email ?? undefined}>
+              {user.displayName && <strong>{user.displayName}</strong>}
+              <span>{user.email}</span>
+            </div>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => signOut()}>
               登出
             </button>
-          </header>
+          </div>
+        )}
+      </header>
+
+      {user ? (
+        <>
           {user.email &&
             (checkinParams ? (
               <>

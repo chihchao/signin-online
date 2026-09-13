@@ -22,7 +22,6 @@ interface CourseManagerProps {
 export function CourseManager({ teacherEmail }: CourseManagerProps) {
   const [courses, setCourses] = useState<Course[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
-  const [newCourseName, setNewCourseName] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -35,15 +34,15 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherEmail])
 
-  async function handleCreateCourse(event: React.FormEvent) {
-    event.preventDefault()
-    if (!newCourseName.trim() || isCreating) return
+  async function handleCreateCourse() {
+    const name = window.prompt('請輸入課程名稱')
+    if (!name || !name.trim() || isCreating) return
     setError(null)
     setIsCreating(true)
     try {
-      await createCourse(db, teacherEmail, newCourseName.trim())
-      setNewCourseName('')
+      const courseId = await createCourse(db, teacherEmail, name.trim())
       await refreshCourses()
+      setSelectedCourseId(courseId)
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -71,19 +70,9 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
           ))}
         </ul>
 
-        <form onSubmit={handleCreateCourse}>
-          <label>
-            課程名稱
-            <input
-              value={newCourseName}
-              disabled={isCreating}
-              onChange={(event) => setNewCourseName(event.target.value)}
-            />
-          </label>
-          <button type="submit" className="btn btn-primary" disabled={isCreating}>
-            {isCreating ? '建立中…' : '建立課程'}
-          </button>
-        </form>
+        <button type="button" className="btn btn-primary" disabled={isCreating} onClick={handleCreateCourse}>
+          {isCreating ? '建立中…' : '建立課程'}
+        </button>
 
         {error && (
           <p role="alert" className="status-message status-message--error">
@@ -118,11 +107,20 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
   const [isProjecting, setIsProjecting] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [isManagingAttendance, setIsManagingAttendance] = useState(false)
+  const [isEditingSettings, setIsEditingSettings] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
     getCurrentSessionId(db, course.id)
-      .then(setCurrentSessionId)
-      .catch((err) => setError(describeError(err)))
+      .then((sessionId) => {
+        if (!cancelled) setCurrentSessionId(sessionId)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(describeError(err))
+      })
+    return () => {
+      cancelled = true
+    }
   }, [course.id])
 
   // Adjust local draft state when the underlying course document changes
@@ -180,11 +178,13 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
         courseId={course.id}
         courseName={course.name}
         teacherEmail={teacherEmail}
-        onClose={() => {
+        onClose={(sessionId) => {
           setIsProjecting(false)
-          getCurrentSessionId(db, course.id)
-            .then(setCurrentSessionId)
-            .catch((err) => setError(describeError(err)))
+          // Only overwrite on a genuine new/resumed session — if the
+          // projection view closed before startOrResumeSession ever
+          // resolved (e.g. an error), sessionId is null here and
+          // shouldn't clobber a session this course already had.
+          if (sessionId !== null) setCurrentSessionId(sessionId)
         }}
       />
     )
@@ -200,11 +200,83 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
     )
   }
 
+  if (isEditingSettings) {
+    return (
+      <section className="card">
+        <h3>{course.name} 設定</h3>
+        <button type="button" className="btn btn-secondary" onClick={() => setIsEditingSettings(false)}>
+          關閉
+        </button>
+
+        {error && (
+          <p role="alert" className="status-message status-message--error">
+            {error}
+          </p>
+        )}
+
+        <div className="settings-grid">
+          <div className="panel">
+            <h4>共同授課教師</h4>
+            <ul className="list">
+              {course.teacherEmails.map((email) => (
+                <li key={email} className="list-item">
+                  <span>{email}</span>
+                  <button
+                    type="button"
+                    className="btn btn-destructive btn-sm"
+                    disabled={isLastTeacher}
+                    title={isLastTeacher ? '課程至少要保留一位教師' : undefined}
+                    onClick={() => handleRemoveTeacher(email)}
+                  >
+                    移除
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <form onSubmit={handleAddTeacher}>
+              <label>
+                新增共同授課教師 email
+                <input
+                  value={newTeacherEmail}
+                  onChange={(event) => setNewTeacherEmail(event.target.value)}
+                />
+              </label>
+              <button type="submit" className="btn btn-primary">
+                新增
+              </button>
+            </form>
+          </div>
+
+          <div className="panel">
+            <h4>QR 過期秒數</h4>
+            <form onSubmit={handleSaveQrExpirySeconds}>
+              <label>
+                QR 過期秒數
+                <input
+                  type="number"
+                  min={1}
+                  value={qrExpirySeconds}
+                  onChange={(event) => setQrExpirySeconds(Number(event.target.value))}
+                />
+              </label>
+              <button type="submit" className="btn btn-primary">
+                儲存
+              </button>
+            </form>
+          </div>
+
+          <RosterManager courseId={course.id} />
+          <AttendanceExportView courseId={course.id} courseName={course.name} />
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="card">
       <h3>{course.name} 設定</h3>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         <button type="button" className="btn btn-primary" onClick={() => setIsProjecting(true)}>
           開始點名
         </button>
@@ -217,6 +289,9 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
         >
           管理出席紀錄
         </button>
+        <button type="button" className="btn btn-secondary" onClick={() => setIsEditingSettings(true)}>
+          設定
+        </button>
       </div>
 
       {error && (
@@ -224,61 +299,6 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
           {error}
         </p>
       )}
-
-      <div className="settings-grid">
-        <div className="panel">
-          <h4>共同授課教師</h4>
-          <ul className="list">
-            {course.teacherEmails.map((email) => (
-              <li key={email} className="list-item">
-                <span>{email}</span>
-                <button
-                  type="button"
-                  className="btn btn-destructive btn-sm"
-                  disabled={isLastTeacher}
-                  title={isLastTeacher ? '課程至少要保留一位教師' : undefined}
-                  onClick={() => handleRemoveTeacher(email)}
-                >
-                  移除
-                </button>
-              </li>
-            ))}
-          </ul>
-          <form onSubmit={handleAddTeacher}>
-            <label>
-              新增共同授課教師 email
-              <input
-                value={newTeacherEmail}
-                onChange={(event) => setNewTeacherEmail(event.target.value)}
-              />
-            </label>
-            <button type="submit" className="btn btn-primary">
-              新增
-            </button>
-          </form>
-        </div>
-
-        <div className="panel">
-          <h4>QR 過期秒數</h4>
-          <form onSubmit={handleSaveQrExpirySeconds}>
-            <label>
-              QR 過期秒數
-              <input
-                type="number"
-                min={1}
-                value={qrExpirySeconds}
-                onChange={(event) => setQrExpirySeconds(Number(event.target.value))}
-              />
-            </label>
-            <button type="submit" className="btn btn-primary">
-              儲存
-            </button>
-          </form>
-        </div>
-
-        <RosterManager courseId={course.id} />
-        <AttendanceExportView courseId={course.id} courseName={course.name} />
-      </div>
     </section>
   )
 }
