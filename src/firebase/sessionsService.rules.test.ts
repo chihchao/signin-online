@@ -18,7 +18,7 @@ import {
 import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { submitAttendance } from './attendanceService'
-import { createToken, endSession, getCurrentSessionId, startOrResumeSession } from './sessionsService'
+import { createToken, endSession, listSessionsForCourse, startOrResumeSession } from './sessionsService'
 
 const TEACHER = 'teacher@example.com'
 const OTHER_TEACHER = 'other-teacher@example.com'
@@ -117,30 +117,32 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
     await assertFails(createToken(dbAs(OTHER_TEACHER), sessionId))
   })
 
-  describe('getCurrentSessionId', () => {
-    it('returns null when 點名 has never been started for this course', async () => {
-      await seedCourse('course-1', [TEACHER])
-
-      await expect(getCurrentSessionId(dbAs(TEACHER), 'course-1')).resolves.toBeNull()
-    })
-
-    it("returns the course's most recent session id, including after it has ended", async () => {
+  describe('listSessionsForCourse', () => {
+    it('lists every past session for a course, newest first', async () => {
       await seedCourse('course-1', [TEACHER])
       const teacherDb = dbAs(TEACHER)
-      const sessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+      const firstSessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+      await endSession(teacherDb, firstSessionId, 'course-1')
+      const secondSessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
 
-      await expect(getCurrentSessionId(teacherDb, 'course-1')).resolves.toBe(sessionId)
+      const sessions = await assertSucceeds(listSessionsForCourse(teacherDb, 'course-1'))
 
-      await endSession(teacherDb, sessionId, 'course-1')
-
-      await expect(getCurrentSessionId(teacherDb, 'course-1')).resolves.toBe(sessionId)
+      expect(sessions.map((session) => session.id)).toEqual([secondSessionId, firstSessionId])
+      expect(sessions[1].endedAt).toBeInstanceOf(Date)
+      expect(sessions[0].endedAt).toBeNull()
     })
 
-    it('denies a non-course-teacher from reading the current session id', async () => {
+    it('returns an empty list when 點名 has never been started for this course', async () => {
+      await seedCourse('course-1', [TEACHER])
+
+      await expect(listSessionsForCourse(dbAs(TEACHER), 'course-1')).resolves.toEqual([])
+    })
+
+    it('denies a non-course-teacher from listing sessions', async () => {
       await seedCourse('course-1', [TEACHER])
       await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
 
-      await assertFails(getCurrentSessionId(dbAs(OTHER_TEACHER), 'course-1'))
+      await assertFails(listSessionsForCourse(dbAs(OTHER_TEACHER), 'course-1'))
     })
   })
 

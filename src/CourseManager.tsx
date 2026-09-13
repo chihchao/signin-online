@@ -11,7 +11,6 @@ import {
   type Course,
 } from './firebase/coursesService'
 import { addRosterStudent, importRoster, listRoster, removeRosterStudent } from './firebase/rosterService'
-import { getCurrentSessionId } from './firebase/sessionsService'
 import { ProjectionView } from './ProjectionView'
 import { describeError } from './errors'
 
@@ -105,23 +104,8 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
   const [lastSeenQrExpirySeconds, setLastSeenQrExpirySeconds] = useState(course.qrExpirySeconds)
   const [error, setError] = useState<string | null>(null)
   const [isProjecting, setIsProjecting] = useState(false)
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [isManagingAttendance, setIsManagingAttendance] = useState(false)
   const [isEditingSettings, setIsEditingSettings] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    getCurrentSessionId(db, course.id)
-      .then((sessionId) => {
-        if (!cancelled) setCurrentSessionId(sessionId)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(describeError(err))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [course.id])
 
   // Adjust local draft state when the underlying course document changes
   // (e.g. another teacher edited it), without discarding an in-progress
@@ -178,26 +162,13 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
         courseId={course.id}
         courseName={course.name}
         teacherEmail={teacherEmail}
-        onClose={(sessionId) => {
-          setIsProjecting(false)
-          // Only overwrite on a genuine new/resumed session — if the
-          // projection view closed before startOrResumeSession ever
-          // resolved (e.g. an error), sessionId is null here and
-          // shouldn't clobber a session this course already had.
-          if (sessionId !== null) setCurrentSessionId(sessionId)
-        }}
+        onClose={() => setIsProjecting(false)}
       />
     )
   }
 
-  if (isManagingAttendance && currentSessionId) {
-    return (
-      <AttendanceRecordView
-        courseId={course.id}
-        sessionId={currentSessionId}
-        onClose={() => setIsManagingAttendance(false)}
-      />
-    )
+  if (isManagingAttendance) {
+    return <AttendanceRecordView courseId={course.id} onClose={() => setIsManagingAttendance(false)} />
   }
 
   if (isEditingSettings) {
@@ -280,13 +251,7 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
         <button type="button" className="btn btn-primary" onClick={() => setIsProjecting(true)}>
           開始點名
         </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={!currentSessionId}
-          title={currentSessionId ? undefined : '尚未開始過點名'}
-          onClick={() => setIsManagingAttendance(true)}
-        >
+        <button type="button" className="btn btn-secondary" onClick={() => setIsManagingAttendance(true)}>
           管理出席紀錄
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => setIsEditingSettings(true)}>

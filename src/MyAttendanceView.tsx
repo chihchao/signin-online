@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { STATUS_LABELS, STATUS_VARIANTS } from './attendanceStatusLabels'
+import { formatDate } from './dateFormat'
 import { describeError } from './errors'
 import { db } from './firebase/config'
 import { listAttendanceForStudent, type StudentAttendanceRecord } from './firebase/attendanceService'
@@ -61,7 +62,12 @@ export function MyAttendanceView({ studentEmail }: MyAttendanceViewProps) {
       <ul className="list">
         {records.map((record) => (
           <li key={record.sessionId} className="list-item">
-            <span>{record.courseName}</span>
+            <div>
+              <div>{record.courseName}</div>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--color-muted-foreground)' }}>
+                {formatDate(record.timestamp)}
+              </div>
+            </div>
             <span className={`badge badge--${STATUS_VARIANTS[record.status]}`}>
               {STATUS_LABELS[record.status]}
             </span>

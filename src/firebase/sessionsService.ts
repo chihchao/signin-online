@@ -8,6 +8,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  type Timestamp,
   updateDoc,
   where,
   writeBatch,
@@ -60,13 +61,29 @@ export async function startOrResumeSession(
   })
 }
 
-// The most recent session for this course (active or already ended),
-// for jumping straight to 管理出席紀錄 from course settings without
-// going through the projection page's "開始點名" flow first. null
-// means 點名 has never been started for this course.
-export async function getCurrentSessionId(db: Firestore, courseId: string): Promise<string | null> {
-  const pointerSnap = await getDoc(doc(db, 'activeSessions', courseId))
-  return pointerSnap.exists() ? (pointerSnap.data().sessionId as string) : null
+export interface SessionSummary {
+  id: string
+  createdAt: Date | null
+  endedAt: Date | null
+}
+
+// Every past 點名 for this course (not just the current one), newest
+// first — for a teacher browsing history to manage a specific class
+// meeting's attendance instead of only the most recent one. courseId
+// is always equality-filtered here, matching the sessions/{sessionId}
+// `allow list` rule (isTeacherOfCourse(resource.data.courseId)).
+export async function listSessionsForCourse(db: Firestore, courseId: string): Promise<SessionSummary[]> {
+  const snapshot = await getDocs(query(collection(db, 'sessions'), where('courseId', '==', courseId)))
+  return snapshot.docs
+    .map((docSnapshot) => {
+      const data = docSnapshot.data()
+      return {
+        id: docSnapshot.id,
+        createdAt: (data.createdAt as Timestamp | null)?.toDate() ?? null,
+        endedAt: (data.endedAt as Timestamp | null)?.toDate() ?? null,
+      }
+    })
+    .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
 }
 
 export async function createToken(db: Firestore, sessionId: string): Promise<string> {

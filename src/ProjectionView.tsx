@@ -12,10 +12,7 @@ interface ProjectionViewProps {
   courseId: string
   courseName: string
   teacherEmail: string
-  // Passed the session this view resumed/created (or null if it never
-  // got that far), so the caller can update its own idea of "the
-  // current session" without a redundant re-fetch of the same value.
-  onClose: (sessionId: string | null) => void
+  onClose: () => void
 }
 
 export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: ProjectionViewProps) {
@@ -88,14 +85,8 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
     }
   }
 
-  if (isManagingAttendance && sessionId) {
-    return (
-      <AttendanceRecordView
-        courseId={courseId}
-        sessionId={sessionId}
-        onClose={() => setIsManagingAttendance(false)}
-      />
-    )
+  if (isManagingAttendance) {
+    return <AttendanceRecordView courseId={courseId} onClose={() => setIsManagingAttendance(false)} />
   }
 
   return (
@@ -103,7 +94,7 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
       <h3>{courseName} — 投影頁</h3>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-        <button type="button" className="btn btn-secondary" onClick={() => onClose(sessionId)} disabled={isEnding}>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isEnding}>
           關閉投影頁
         </button>
         {!hasEnded && (

@@ -1,18 +1,11 @@
 import { STATUS_LABELS } from './attendanceStatusLabels'
+import { formatDate } from './dateFormat'
 import type { AttendanceExportRow } from './firebase/attendanceService'
 
 const HEADER = ['學生 email', '課程名稱', '日期', '狀態']
 
 function escapeCsvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
-}
-
-function formatDate(date: Date | null): string {
-  if (date === null) return ''
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
 }
 
 export function buildAttendanceExportCsv(courseName: string, rows: AttendanceExportRow[]): string {
