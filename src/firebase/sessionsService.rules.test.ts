@@ -18,7 +18,7 @@ import {
 import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { submitAttendance } from './attendanceService'
-import { createToken, endSession, startOrResumeSession } from './sessionsService'
+import { createToken, endSession, getCurrentSessionId, startOrResumeSession } from './sessionsService'
 
 const TEACHER = 'teacher@example.com'
 const OTHER_TEACHER = 'other-teacher@example.com'
@@ -115,6 +115,33 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
     const sessionId = await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
 
     await assertFails(createToken(dbAs(OTHER_TEACHER), sessionId))
+  })
+
+  describe('getCurrentSessionId', () => {
+    it('returns null when 點名 has never been started for this course', async () => {
+      await seedCourse('course-1', [TEACHER])
+
+      await expect(getCurrentSessionId(dbAs(TEACHER), 'course-1')).resolves.toBeNull()
+    })
+
+    it("returns the course's most recent session id, including after it has ended", async () => {
+      await seedCourse('course-1', [TEACHER])
+      const teacherDb = dbAs(TEACHER)
+      const sessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+
+      await expect(getCurrentSessionId(teacherDb, 'course-1')).resolves.toBe(sessionId)
+
+      await endSession(teacherDb, sessionId, 'course-1')
+
+      await expect(getCurrentSessionId(teacherDb, 'course-1')).resolves.toBe(sessionId)
+    })
+
+    it('denies a non-course-teacher from reading the current session id', async () => {
+      await seedCourse('course-1', [TEACHER])
+      await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
+
+      await assertFails(getCurrentSessionId(dbAs(OTHER_TEACHER), 'course-1'))
+    })
   })
 
   it('lets an enrolled student read a session (needed for the check-in flow)', async () => {

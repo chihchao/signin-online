@@ -60,6 +60,15 @@ export async function startOrResumeSession(
   })
 }
 
+// The most recent session for this course (active or already ended),
+// for jumping straight to 管理出席紀錄 from course settings without
+// going through the projection page's "開始點名" flow first. null
+// means 點名 has never been started for this course.
+export async function getCurrentSessionId(db: Firestore, courseId: string): Promise<string | null> {
+  const pointerSnap = await getDoc(doc(db, 'activeSessions', courseId))
+  return pointerSnap.exists() ? (pointerSnap.data().sessionId as string) : null
+}
+
 export async function createToken(db: Firestore, sessionId: string): Promise<string> {
   const tokenRef = await addDoc(collection(db, 'sessions', sessionId, 'tokens'), {
     createdAt: serverTimestamp(),

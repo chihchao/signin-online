@@ -78,7 +78,7 @@ body {
 
 .app-shell {
   width: 100%;
-  max-width: 640px;
+  max-width: 880px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -96,12 +96,23 @@ body {
 }
 
 .app-header__account {
+  /* min-width:0 overrides the flex item's default auto min-width
+     (which is its content's intrinsic size) — without it the text
+     can never actually shrink, so overflow/ellipsis below does
+     nothing and the logout button gets squeezed into wrapping
+     instead. */
+  min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
   font-size: 0.875rem;
   color: var(--color-muted-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-header .btn {
+  flex-shrink: 0;
 }
 
 h1,
@@ -211,6 +222,37 @@ button {
   margin-top: var(--space-5);
   padding-top: var(--space-5);
   border-top: 1px solid var(--color-border);
+}
+
+/* Side-by-side panels on wide screens instead of one long vertical
+   column of subsections — each .panel is self-contained so it works
+   as a grid cell in any column count. */
+.settings-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+@media (min-width: 720px) {
+  .settings-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.panel {
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+}
+
+/* Caps a long roster/list so it scrolls internally instead of
+   stretching its grid cell (and the page) ever taller. */
+.list--scroll {
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 /* Lists */

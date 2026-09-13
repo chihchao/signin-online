@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AttendanceExportView } from './AttendanceExportView'
+import { AttendanceRecordView } from './AttendanceRecordView'
 import { db } from './firebase/config'
 import {
   addCourseTeacher,
@@ -10,6 +11,7 @@ import {
   type Course,
 } from './firebase/coursesService'
 import { addRosterStudent, importRoster, listRoster, removeRosterStudent } from './firebase/rosterService'
+import { getCurrentSessionId } from './firebase/sessionsService'
 import { ProjectionView } from './ProjectionView'
 import { describeError } from './errors'
 
@@ -114,6 +116,14 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
   const [lastSeenQrExpirySeconds, setLastSeenQrExpirySeconds] = useState(course.qrExpirySeconds)
   const [error, setError] = useState<string | null>(null)
   const [isProjecting, setIsProjecting] = useState(false)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [isManagingAttendance, setIsManagingAttendance] = useState(false)
+
+  useEffect(() => {
+    getCurrentSessionId(db, course.id)
+      .then(setCurrentSessionId)
+      .catch((err) => setError(describeError(err)))
+  }, [course.id])
 
   // Adjust local draft state when the underlying course document changes
   // (e.g. another teacher edited it), without discarding an in-progress
@@ -170,7 +180,22 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
         courseId={course.id}
         courseName={course.name}
         teacherEmail={teacherEmail}
-        onClose={() => setIsProjecting(false)}
+        onClose={() => {
+          setIsProjecting(false)
+          getCurrentSessionId(db, course.id)
+            .then(setCurrentSessionId)
+            .catch((err) => setError(describeError(err)))
+        }}
+      />
+    )
+  }
+
+  if (isManagingAttendance && currentSessionId) {
+    return (
+      <AttendanceRecordView
+        courseId={course.id}
+        sessionId={currentSessionId}
+        onClose={() => setIsManagingAttendance(false)}
       />
     )
   }
@@ -179,57 +204,19 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
     <section className="card">
       <h3>{course.name} 設定</h3>
 
-      <button type="button" className="btn btn-primary" onClick={() => setIsProjecting(true)}>
-        開始點名
-      </button>
-
-      <div className="subsection">
-        <h4>共同授課教師</h4>
-        <ul className="list">
-          {course.teacherEmails.map((email) => (
-            <li key={email} className="list-item">
-              <span>{email}</span>
-              <button
-                type="button"
-                className="btn btn-destructive btn-sm"
-                disabled={isLastTeacher}
-                title={isLastTeacher ? '課程至少要保留一位教師' : undefined}
-                onClick={() => handleRemoveTeacher(email)}
-              >
-                移除
-              </button>
-            </li>
-          ))}
-        </ul>
-        <form onSubmit={handleAddTeacher}>
-          <label>
-            新增共同授課教師 email
-            <input
-              value={newTeacherEmail}
-              onChange={(event) => setNewTeacherEmail(event.target.value)}
-            />
-          </label>
-          <button type="submit" className="btn btn-primary">
-            新增
-          </button>
-        </form>
-      </div>
-
-      <div className="subsection">
-        <form onSubmit={handleSaveQrExpirySeconds}>
-          <label>
-            QR 過期秒數
-            <input
-              type="number"
-              min={1}
-              value={qrExpirySeconds}
-              onChange={(event) => setQrExpirySeconds(Number(event.target.value))}
-            />
-          </label>
-          <button type="submit" className="btn btn-primary">
-            儲存
-          </button>
-        </form>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+        <button type="button" className="btn btn-primary" onClick={() => setIsProjecting(true)}>
+          開始點名
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={!currentSessionId}
+          title={currentSessionId ? undefined : '尚未開始過點名'}
+          onClick={() => setIsManagingAttendance(true)}
+        >
+          管理出席紀錄
+        </button>
       </div>
 
       {error && (
@@ -238,8 +225,60 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
         </p>
       )}
 
-      <RosterManager courseId={course.id} />
-      <AttendanceExportView courseId={course.id} courseName={course.name} />
+      <div className="settings-grid">
+        <div className="panel">
+          <h4>共同授課教師</h4>
+          <ul className="list">
+            {course.teacherEmails.map((email) => (
+              <li key={email} className="list-item">
+                <span>{email}</span>
+                <button
+                  type="button"
+                  className="btn btn-destructive btn-sm"
+                  disabled={isLastTeacher}
+                  title={isLastTeacher ? '課程至少要保留一位教師' : undefined}
+                  onClick={() => handleRemoveTeacher(email)}
+                >
+                  移除
+                </button>
+              </li>
+            ))}
+          </ul>
+          <form onSubmit={handleAddTeacher}>
+            <label>
+              新增共同授課教師 email
+              <input
+                value={newTeacherEmail}
+                onChange={(event) => setNewTeacherEmail(event.target.value)}
+              />
+            </label>
+            <button type="submit" className="btn btn-primary">
+              新增
+            </button>
+          </form>
+        </div>
+
+        <div className="panel">
+          <h4>QR 過期秒數</h4>
+          <form onSubmit={handleSaveQrExpirySeconds}>
+            <label>
+              QR 過期秒數
+              <input
+                type="number"
+                min={1}
+                value={qrExpirySeconds}
+                onChange={(event) => setQrExpirySeconds(Number(event.target.value))}
+              />
+            </label>
+            <button type="submit" className="btn btn-primary">
+              儲存
+            </button>
+          </form>
+        </div>
+
+        <RosterManager courseId={course.id} />
+        <AttendanceExportView courseId={course.id} courseName={course.name} />
+      </div>
     </section>
   )
 }
@@ -300,9 +339,9 @@ function RosterManager({ courseId }: RosterManagerProps) {
   }
 
   return (
-    <div className="subsection">
+    <div className="panel">
       <h4>選課名單</h4>
-      <ul className="list">
+      <ul className="list list--scroll">
         {roster.map((email) => (
           <li key={email} className="list-item">
             <span>{email}</span>

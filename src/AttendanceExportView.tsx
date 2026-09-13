@@ -63,7 +63,7 @@ export function AttendanceExportView({ courseId, courseName }: AttendanceExportV
   }
 
   return (
-    <section className="subsection">
+    <section className="panel">
       <h4>匯出出席資料</h4>
       <form onSubmit={handleExport}>
         <label>
