@@ -22,13 +22,15 @@ function App() {
   }
 
   return (
-    <main>
+    <main className="app-shell">
       {user ? (
         <>
-          <p>目前登入帳號：{user.email}</p>
-          <button type="button" onClick={() => signOut()}>
-            登出
-          </button>
+          <header className="app-header">
+            <p className="app-header__account">目前登入帳號：{user.email}</p>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => signOut()}>
+              登出
+            </button>
+          </header>
           {user.email &&
             (checkinParams ? (
               <>
@@ -37,13 +39,17 @@ function App() {
                   tokenId={checkinParams.tokenId}
                   studentEmail={user.email}
                 />
-                <button type="button" onClick={leaveCheckin}>
+                <button type="button" className="btn btn-secondary" onClick={leaveCheckin}>
                   離開簽到頁
                 </button>
               </>
             ) : (
               <>
-                <button type="button" onClick={() => setShowMyAttendance((current) => !current)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowMyAttendance((current) => !current)}
+                >
                   {showMyAttendance ? '返回課程管理' : '我的出席紀錄'}
                 </button>
                 {showMyAttendance ? (
@@ -55,11 +61,15 @@ function App() {
             ))}
         </>
       ) : (
-        <button type="button" onClick={() => signIn()}>
+        <button type="button" className="btn btn-primary" onClick={() => signIn()}>
           使用 Google 登入
         </button>
       )}
-      {error && <p role="alert">登入發生問題，請再試一次。</p>}
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          登入發生問題，請再試一次。
+        </p>
+      )}
     </main>
   )
 }
