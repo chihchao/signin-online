@@ -21,6 +21,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import {
   addAttendanceRecord,
   deleteAttendanceRecord,
+  listAttendanceForExport,
   listAttendanceForSession,
   listAttendanceForStudent,
   submitAttendance,
@@ -482,6 +483,42 @@ describe('attendanceService (against Firestore rules via emulator)', () => {
 
       await assertFails(
         getDocs(query(collection(dbAs(OTHER_STUDENT), 'attendance'), where('studentEmail', '==', STUDENT))),
+      )
+    })
+  })
+
+  describe('CSV export for teachers (issue #10)', () => {
+    it('lets a course teacher export attendance within a date range, excluding records outside it', async () => {
+      await seedScenario({ tokenAgeSeconds: 5 })
+      await submitAttendance(dbAs(STUDENT), SESSION_ID, 'token-1', STUDENT)
+
+      // An old record for the same course, outside the query's date range.
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        await setDoc(doc(db, 'attendance', `old-session_${OTHER_STUDENT}`), {
+          sessionId: 'old-session',
+          courseId: COURSE_ID,
+          studentEmail: OTHER_STUDENT,
+          status: 'absent',
+          timestamp: new Date('2020-01-01T00:00:00Z'),
+        })
+      })
+
+      const start = new Date(Date.now() - 60_000)
+      const endExclusive = new Date(Date.now() + 60_000)
+      const rows = await assertSucceeds(
+        listAttendanceForExport(dbAs(TEACHER), COURSE_ID, start, endExclusive),
+      )
+
+      expect(rows).toEqual([expect.objectContaining({ studentEmail: STUDENT, status: 'present' })])
+    })
+
+    it('denies a non-course-teacher from exporting attendance', async () => {
+      await seedScenario({ tokenAgeSeconds: 5 })
+      await submitAttendance(dbAs(STUDENT), SESSION_ID, 'token-1', STUDENT)
+
+      await assertFails(
+        listAttendanceForExport(dbAs(OTHER_STUDENT), COURSE_ID, new Date(0), new Date()),
       )
     })
   })

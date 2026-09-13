@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AttendanceExportView } from './AttendanceExportView'
 import { db } from './firebase/config'
 import {
   addCourseTeacher,
@@ -215,6 +216,7 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
       {error && <p role="alert">{error}</p>}
 
       <RosterManager courseId={course.id} />
+      <AttendanceExportView courseId={course.id} courseName={course.name} />
     </section>
   )
 }

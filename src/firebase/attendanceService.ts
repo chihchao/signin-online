@@ -176,6 +176,42 @@ export async function listAttendanceForSession(
   })
 }
 
+export interface AttendanceExportRow {
+  studentEmail: string
+  status: AttendanceStatus
+  timestamp: Date | null
+}
+
+// CSV 匯出 (issue #10): a course teacher's attendance records within a
+// date range, for exporting. `endExclusive` is exclusive so callers
+// can pass "start of the day after the last day" without an off-by-
+// one. courseId is always equality-filtered here — required for
+// Firestore to prove the rule (isTeacherOfCourse(resource.data.courseId))
+// without reading every attendance document in the collection.
+export async function listAttendanceForExport(
+  db: Firestore,
+  courseId: string,
+  start: Date,
+  endExclusive: Date,
+): Promise<AttendanceExportRow[]> {
+  const snapshot = await getDocs(
+    query(
+      collection(db, 'attendance'),
+      where('courseId', '==', courseId),
+      where('timestamp', '>=', start),
+      where('timestamp', '<', endExclusive),
+    ),
+  )
+  return snapshot.docs.map((docSnapshot) => {
+    const data = docSnapshot.data()
+    return {
+      studentEmail: data.studentEmail as string,
+      status: data.status as AttendanceStatus,
+      timestamp: (data.timestamp as Timestamp | null)?.toDate() ?? null,
+    }
+  })
+}
+
 export interface StudentAttendanceRecord {
   sessionId: string
   courseId: string
