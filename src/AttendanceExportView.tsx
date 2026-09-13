@@ -63,7 +63,7 @@ export function AttendanceExportView({ courseId, courseName }: AttendanceExportV
   }
 
   return (
-    <section>
+    <section className="subsection">
       <h4>匯出出席資料</h4>
       <form onSubmit={handleExport}>
         <label>
@@ -84,12 +84,16 @@ export function AttendanceExportView({ courseId, courseName }: AttendanceExportV
             onChange={(event) => setEndDate(event.target.value)}
           />
         </label>
-        <button type="submit" disabled={isExporting}>
-          匯出 CSV
+        <button type="submit" className="btn btn-primary" disabled={isExporting}>
+          {isExporting ? '匯出中…' : '匯出 CSV'}
         </button>
       </form>
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          {error}
+        </p>
+      )}
     </section>
   )
 }

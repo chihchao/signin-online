@@ -73,51 +73,62 @@ export function AttendanceRecordView({ courseId, sessionId, onClose }: Attendanc
   }
 
   return (
-    <section>
+    <section className="card">
       <h3>出席紀錄</h3>
-      <button type="button" onClick={onClose}>
+      <button type="button" className="btn btn-secondary" onClick={onClose}>
         關閉
       </button>
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          {error}
+        </p>
+      )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>學生</th>
-            <th>狀態</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.email}>
-              <td>{row.email}</td>
-              <td>
-                <select
-                  value={row.status ?? ''}
-                  disabled={busyEmail === row.email}
-                  onChange={(event) => handleStatusChange(row, event.target.value as AttendanceStatus)}
-                >
-                  {row.status === null && <option value="">未簽到</option>}
-                  {ALL_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {STATUS_LABELS[status]}
-                    </option>
-                  ))}
-                </select>
-              </td>
-              <td>
-                {row.status !== null && (
-                  <button type="button" disabled={busyEmail === row.email} onClick={() => handleDelete(row)}>
-                    刪除
-                  </button>
-                )}
-              </td>
+      <div className="table-wrap" style={{ marginTop: 'var(--space-4)' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>學生</th>
+              <th>狀態</th>
+              <th></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.email}>
+                <td>{row.email}</td>
+                <td>
+                  <select
+                    value={row.status ?? ''}
+                    disabled={busyEmail === row.email}
+                    onChange={(event) => handleStatusChange(row, event.target.value as AttendanceStatus)}
+                  >
+                    {row.status === null && <option value="">未簽到</option>}
+                    {ALL_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {STATUS_LABELS[status]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  {row.status !== null && (
+                    <button
+                      type="button"
+                      className="btn btn-destructive btn-sm"
+                      disabled={busyEmail === row.email}
+                      onClick={() => handleDelete(row)}
+                    >
+                      刪除
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   )
 }

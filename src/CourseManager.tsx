@@ -52,33 +52,43 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
   const selectedCourse = courses.find((course) => course.id === selectedCourseId) ?? null
 
   return (
-    <section>
-      <h2>我的課程</h2>
-      <ul>
-        {courses.map((course) => (
-          <li key={course.id}>
-            <button type="button" onClick={() => setSelectedCourseId(course.id)}>
-              {course.name}
-            </button>
-          </li>
-        ))}
-      </ul>
+    <>
+      <section className="card">
+        <h2>我的課程</h2>
+        <ul className="list">
+          {courses.map((course) => (
+            <li key={course.id}>
+              <button
+                type="button"
+                className="list-item--button"
+                onClick={() => setSelectedCourseId(course.id)}
+              >
+                {course.name}
+              </button>
+            </li>
+          ))}
+        </ul>
 
-      <form onSubmit={handleCreateCourse}>
-        <label>
-          課程名稱
-          <input
-            value={newCourseName}
-            disabled={isCreating}
-            onChange={(event) => setNewCourseName(event.target.value)}
-          />
-        </label>
-        <button type="submit" disabled={isCreating}>
-          建立課程
-        </button>
-      </form>
+        <form onSubmit={handleCreateCourse}>
+          <label>
+            課程名稱
+            <input
+              value={newCourseName}
+              disabled={isCreating}
+              onChange={(event) => setNewCourseName(event.target.value)}
+            />
+          </label>
+          <button type="submit" className="btn btn-primary" disabled={isCreating}>
+            {isCreating ? '建立中…' : '建立課程'}
+          </button>
+        </form>
 
-      {error && <p role="alert">{error}</p>}
+        {error && (
+          <p role="alert" className="status-message status-message--error">
+            {error}
+          </p>
+        )}
+      </section>
 
       {selectedCourse && (
         <CourseSettings
@@ -88,7 +98,7 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
           onChanged={refreshCourses}
         />
       )}
-    </section>
+    </>
   )
 }
 
@@ -166,54 +176,67 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
   }
 
   return (
-    <section>
+    <section className="card">
       <h3>{course.name} 設定</h3>
 
-      <button type="button" onClick={() => setIsProjecting(true)}>
+      <button type="button" className="btn btn-primary" onClick={() => setIsProjecting(true)}>
         開始點名
       </button>
 
-      <h4>共同授課教師</h4>
-      <ul>
-        {course.teacherEmails.map((email) => (
-          <li key={email}>
-            {email}
-            <button
-              type="button"
-              disabled={isLastTeacher}
-              title={isLastTeacher ? '課程至少要保留一位教師' : undefined}
-              onClick={() => handleRemoveTeacher(email)}
-            >
-              移除
-            </button>
-          </li>
-        ))}
-      </ul>
-      <form onSubmit={handleAddTeacher}>
-        <label>
-          新增共同授課教師 email
-          <input
-            value={newTeacherEmail}
-            onChange={(event) => setNewTeacherEmail(event.target.value)}
-          />
-        </label>
-        <button type="submit">新增</button>
-      </form>
+      <div className="subsection">
+        <h4>共同授課教師</h4>
+        <ul className="list">
+          {course.teacherEmails.map((email) => (
+            <li key={email} className="list-item">
+              <span>{email}</span>
+              <button
+                type="button"
+                className="btn btn-destructive btn-sm"
+                disabled={isLastTeacher}
+                title={isLastTeacher ? '課程至少要保留一位教師' : undefined}
+                onClick={() => handleRemoveTeacher(email)}
+              >
+                移除
+              </button>
+            </li>
+          ))}
+        </ul>
+        <form onSubmit={handleAddTeacher}>
+          <label>
+            新增共同授課教師 email
+            <input
+              value={newTeacherEmail}
+              onChange={(event) => setNewTeacherEmail(event.target.value)}
+            />
+          </label>
+          <button type="submit" className="btn btn-primary">
+            新增
+          </button>
+        </form>
+      </div>
 
-      <form onSubmit={handleSaveQrExpirySeconds}>
-        <label>
-          QR 過期秒數
-          <input
-            type="number"
-            min={1}
-            value={qrExpirySeconds}
-            onChange={(event) => setQrExpirySeconds(Number(event.target.value))}
-          />
-        </label>
-        <button type="submit">儲存</button>
-      </form>
+      <div className="subsection">
+        <form onSubmit={handleSaveQrExpirySeconds}>
+          <label>
+            QR 過期秒數
+            <input
+              type="number"
+              min={1}
+              value={qrExpirySeconds}
+              onChange={(event) => setQrExpirySeconds(Number(event.target.value))}
+            />
+          </label>
+          <button type="submit" className="btn btn-primary">
+            儲存
+          </button>
+        </form>
+      </div>
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          {error}
+        </p>
+      )}
 
       <RosterManager courseId={course.id} />
       <AttendanceExportView courseId={course.id} courseName={course.name} />
@@ -277,13 +300,13 @@ function RosterManager({ courseId }: RosterManagerProps) {
   }
 
   return (
-    <section>
+    <div className="subsection">
       <h4>選課名單</h4>
-      <ul>
+      <ul className="list">
         {roster.map((email) => (
-          <li key={email}>
-            {email}
-            <button type="button" onClick={() => handleRemoveStudent(email)}>
+          <li key={email} className="list-item">
+            <span>{email}</span>
+            <button type="button" className="btn btn-destructive btn-sm" onClick={() => handleRemoveStudent(email)}>
               移除
             </button>
           </li>
@@ -298,21 +321,30 @@ function RosterManager({ courseId }: RosterManagerProps) {
             onChange={(event) => setNewStudentEmail(event.target.value)}
           />
         </label>
-        <button type="submit">新增</button>
+        <button type="submit" className="btn btn-primary">
+          新增
+        </button>
       </form>
 
       <form onSubmit={handleImport}>
         <label>
           貼上選課名單（每行一個 email）
           <textarea
+            rows={4}
             value={pasteText}
             onChange={(event) => setPasteText(event.target.value)}
           />
         </label>
-        <button type="submit">批次匯入</button>
+        <button type="submit" className="btn btn-primary">
+          批次匯入
+        </button>
       </form>
 
-      {error && <p role="alert">{error}</p>}
-    </section>
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }

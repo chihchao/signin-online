@@ -96,23 +96,43 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
   }
 
   return (
-    <section>
+    <section className="card">
       <h3>{courseName} — 投影頁</h3>
-      <button type="button" onClick={onClose} disabled={isEnding}>
-        關閉投影頁
-      </button>
-      {!hasEnded && (
-        <button type="button" onClick={handleEndSession} disabled={!sessionId || isEnding}>
-          結束點名
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isEnding}>
+          關閉投影頁
         </button>
+        {!hasEnded && (
+          <button type="button" className="btn btn-secondary" onClick={handleEndSession} disabled={!sessionId || isEnding}>
+            {isEnding ? '結束中…' : '結束點名'}
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => setIsManagingAttendance(true)}
+          disabled={!sessionId || isEnding}
+        >
+          管理出席紀錄
+        </button>
+      </div>
+
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          {error}
+        </p>
       )}
-      <button type="button" onClick={() => setIsManagingAttendance(true)} disabled={!sessionId || isEnding}>
-        管理出席紀錄
-      </button>
 
-      {error && <p role="alert">{error}</p>}
-
-      {hasEnded ? <p>點名已結束</p> : qrDataUrl && <img src={qrDataUrl} alt="簽到 QR Code" />}
+      {hasEnded ? (
+        <p className="status-message status-message--info">點名已結束</p>
+      ) : (
+        qrDataUrl && (
+          <div className="qr-frame">
+            <img src={qrDataUrl} alt="簽到 QR Code" />
+          </div>
+        )
+      )}
     </section>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { STATUS_LABELS } from './attendanceStatusLabels'
+import { STATUS_LABELS, STATUS_VARIANTS } from './attendanceStatusLabels'
 import { describeError } from './errors'
 import { db } from './firebase/config'
 import { listAttendanceForStudent, type StudentAttendanceRecord } from './firebase/attendanceService'
@@ -49,15 +49,22 @@ export function MyAttendanceView({ studentEmail }: MyAttendanceViewProps) {
   }, [studentEmail])
 
   return (
-    <section>
+    <section className="card">
       <h2>我的出席紀錄</h2>
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          {error}
+        </p>
+      )}
 
-      <ul>
+      <ul className="list">
         {records.map((record) => (
-          <li key={record.sessionId}>
-            {record.courseName}：{STATUS_LABELS[record.status]}
+          <li key={record.sessionId} className="list-item">
+            <span>{record.courseName}</span>
+            <span className={`badge badge--${STATUS_VARIANTS[record.status]}`}>
+              {STATUS_LABELS[record.status]}
+            </span>
           </li>
         ))}
       </ul>
