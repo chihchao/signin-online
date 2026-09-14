@@ -93,6 +93,13 @@ service cloud.firestore {
         isValidQrExpirySeconds() &&
         isValidCustomStatuses() &&
         onlyMutableFieldsChanged();
+      // 刪除課程: any of the course's teachers. deleteCourse deletes
+      // this document last, after every session/token/attendance/
+      // roster/activeSessions doc scoped to it — those rules all
+      // re-check isTeacherOfCourse(courseId), which requires this
+      // document to still exist, so deleting it first would strand
+      // them unreachable by anyone.
+      allow delete: if isCourseTeacher();
 
       match /roster/{studentEmail} {
         allow read, write: if isTeacherOfCourse(courseId);
@@ -139,6 +146,10 @@ service cloud.firestore {
         request.resource.data.createdBy == resource.data.createdBy &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.keys().hasOnly(['courseId', 'createdBy', 'createdAt', 'endedAt']);
+      // 刪除課程 (deleteCourse) deletes every session belonging to it —
+      // done while the course document still exists, so this can still
+      // prove isTeacherOfCourse.
+      allow delete: if isTeacherOfCourse(resource.data.courseId);
 
       match /tokens/{tokenId} {
         function sessionCourseId() {
@@ -148,6 +159,9 @@ service cloud.firestore {
         allow create: if isTeacherOfCourse(sessionCourseId()) &&
           request.resource.data.createdAt == request.time;
         allow read: if isTeacherOfCourse(sessionCourseId());
+        // 刪除課程 deletes each session's tokens first, while the
+        // session (and its course) still exist.
+        allow delete: if isTeacherOfCourse(sessionCourseId());
       }
     }
 

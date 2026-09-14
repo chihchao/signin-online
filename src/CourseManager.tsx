@@ -5,6 +5,7 @@ import { db } from './firebase/config'
 import {
   addCourseTeacher,
   DEFAULT_CUSTOM_STATUSES,
+  deleteCourse,
   removeCourseTeacher,
   updateCustomStatuses,
   updateQrExpirySeconds,
@@ -125,9 +126,21 @@ export interface CourseSettingsProps {
   // switching courses or navigating away never leaves the chrome
   // stuck hidden.
   onProjectingChange: (isProjecting: boolean) => void
+  // The course is gone — App.tsx should refresh the course list and
+  // deselect it, since this component is about to unmount. Awaited
+  // (like onChanged elsewhere in this file) so a refresh failure
+  // surfaces via this component's own error state instead of an
+  // unhandled rejection.
+  onDeleted: () => Promise<void>
 }
 
-export function CourseSettings({ course, teacherEmail, onChanged, onProjectingChange }: CourseSettingsProps) {
+export function CourseSettings({
+  course,
+  teacherEmail,
+  onChanged,
+  onProjectingChange,
+  onDeleted,
+}: CourseSettingsProps) {
   const [newTeacherEmail, setNewTeacherEmail] = useState('')
   const [qrExpirySeconds, setQrExpirySeconds] = useState(course.qrExpirySeconds)
   const [lastSeenQrExpirySeconds, setLastSeenQrExpirySeconds] = useState(course.qrExpirySeconds)
@@ -135,6 +148,7 @@ export function CourseSettings({ course, teacherEmail, onChanged, onProjectingCh
   const [isProjecting, setIsProjecting] = useState(false)
   const [isManagingAttendance, setIsManagingAttendance] = useState(false)
   const [isEditingSettings, setIsEditingSettings] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     onProjectingChange(isProjecting)
@@ -185,6 +199,25 @@ export function CourseSettings({ course, teacherEmail, onChanged, onProjectingCh
       await onChanged()
     } catch (err) {
       setError(describeError(err))
+    }
+  }
+
+  async function handleDeleteCourse() {
+    if (
+      !window.confirm(
+        `確定要刪除「${course.name}」嗎？這會一併刪除選課名單、所有點名場次與出席紀錄，且無法復原。`,
+      )
+    ) {
+      return
+    }
+    setError(null)
+    setIsDeleting(true)
+    try {
+      await deleteCourse(db, course.id)
+      await onDeleted()
+    } catch (err) {
+      setError(describeError(err))
+      setIsDeleting(false)
     }
   }
 
@@ -285,6 +318,16 @@ export function CourseSettings({ course, teacherEmail, onChanged, onProjectingCh
 
           <RosterManager courseId={course.id} />
           <AttendanceExportView courseId={course.id} courseName={course.name} />
+
+          <div className="panel">
+            <h4>刪除課程</h4>
+            <p style={{ marginTop: 0, fontSize: '0.875rem', color: 'var(--color-muted-foreground)' }}>
+              刪除課程會一併刪除選課名單、所有點名場次與出席紀錄，且無法復原。
+            </p>
+            <button type="button" className="btn btn-destructive" onClick={handleDeleteCourse} disabled={isDeleting}>
+              {isDeleting ? '刪除中…' : '刪除課程'}
+            </button>
+          </div>
         </div>
       </section>
     )

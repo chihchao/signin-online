@@ -2,15 +2,18 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   type Firestore,
   getDoc,
   getDocs,
   query,
+  type QueryDocumentSnapshot,
   serverTimestamp,
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore'
 import { isPermissionDeniedError } from './errors'
 
@@ -109,4 +112,49 @@ export async function updateCustomStatuses(
   customStatuses: string[],
 ): Promise<void> {
   await updateDoc(doc(db, 'courses', courseId), { customStatuses })
+}
+
+const FIRESTORE_BATCH_LIMIT = 500
+
+async function deleteAllInBatches(db: Firestore, docs: QueryDocumentSnapshot[]): Promise<void> {
+  for (let start = 0; start < docs.length; start += FIRESTORE_BATCH_LIMIT) {
+    const batch = writeBatch(db)
+    for (const docSnapshot of docs.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+      batch.delete(docSnapshot.ref)
+    }
+    await batch.commit()
+  }
+}
+
+// 刪除課程: removes the course and everything scoped to it — every
+// session (and each session's QR tokens), every attendance record,
+// the roster, and the activeSessions pointer — since none of those
+// remain reachable by anyone once the course document is gone (their
+// rules all re-check isTeacherOfCourse(courseId), which needs the
+// course to still exist). Deletes children first, in that dependency
+// order, so a failure partway through still leaves whatever's left
+// reachable by the same teacher to retry, instead of stranding
+// orphaned documents nobody can reach or clean up.
+export async function deleteCourse(db: Firestore, courseId: string): Promise<void> {
+  const sessionsSnapshot = await getDocs(
+    query(collection(db, 'sessions'), where('courseId', '==', courseId)),
+  )
+  await Promise.all(
+    sessionsSnapshot.docs.map(async (sessionDoc) => {
+      const tokensSnapshot = await getDocs(collection(db, 'sessions', sessionDoc.id, 'tokens'))
+      await deleteAllInBatches(db, tokensSnapshot.docs)
+    }),
+  )
+  await deleteAllInBatches(db, sessionsSnapshot.docs)
+
+  const attendanceSnapshot = await getDocs(
+    query(collection(db, 'attendance'), where('courseId', '==', courseId)),
+  )
+  await deleteAllInBatches(db, attendanceSnapshot.docs)
+
+  const rosterSnapshot = await getDocs(collection(db, 'courses', courseId, 'roster'))
+  await deleteAllInBatches(db, rosterSnapshot.docs)
+
+  await deleteDoc(doc(db, 'activeSessions', courseId))
+  await deleteDoc(doc(db, 'courses', courseId))
 }

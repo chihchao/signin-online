@@ -5,13 +5,14 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, updateDoc, type Firestore } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, type Firestore } from 'firebase/firestore'
 import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import {
   addCourseTeacher,
   createCourse,
   DEFAULT_CUSTOM_STATUSES,
+  deleteCourse,
   getCourse,
   listMyCourses,
   removeCourseTeacher,
@@ -257,6 +258,66 @@ describe('coursesService (against Firestore rules via emulator)', () => {
           customStatuses: Array.from({ length: 21 }, (_, i) => `狀態${i}`),
         }),
       )
+    })
+  })
+
+  describe('deleteCourse', () => {
+    async function seedFullCourse(courseId: string, teacherEmails: string[]) {
+      await seedCourse(courseId, teacherEmails)
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        await setDoc(doc(db, 'courses', courseId, 'roster', STUDENT), { name: '學生' })
+        await setDoc(doc(db, 'activeSessions', courseId), { sessionId: 'session-1' })
+        await setDoc(doc(db, 'sessions', 'session-1'), {
+          courseId,
+          createdBy: teacherEmails[0],
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          endedAt: null,
+        })
+        await setDoc(doc(db, 'sessions', 'session-1', 'tokens', 'token-1'), {
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+        })
+        await setDoc(doc(db, 'attendance', 'session-1_' + STUDENT), {
+          sessionId: 'session-1',
+          courseId,
+          studentEmail: STUDENT,
+          status: 'present',
+          timestamp: new Date('2026-01-01T00:00:00Z'),
+        })
+      })
+    }
+
+    it('lets a course teacher delete a course, cascading to its roster/sessions/tokens/attendance/activeSessions', async () => {
+      await seedTeachers(TEACHER)
+      await seedFullCourse('course-1', [TEACHER])
+      const db = dbAs(TEACHER)
+
+      await assertSucceeds(deleteCourse(db, 'course-1'))
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore() as unknown as Firestore
+        expect((await getDoc(doc(adminDb, 'courses', 'course-1'))).exists()).toBe(false)
+        expect((await getDoc(doc(adminDb, 'activeSessions', 'course-1'))).exists()).toBe(false)
+        expect((await getDoc(doc(adminDb, 'sessions', 'session-1'))).exists()).toBe(false)
+        expect((await getDocs(collection(adminDb, 'sessions', 'session-1', 'tokens'))).empty).toBe(true)
+        expect((await getDocs(collection(adminDb, 'courses', 'course-1', 'roster'))).empty).toBe(true)
+        expect(
+          (await getDoc(doc(adminDb, 'attendance', 'session-1_' + STUDENT))).exists(),
+        ).toBe(false)
+      })
+    })
+
+    it('denies a non-course-teacher from deleting a course', async () => {
+      await seedTeachers(TEACHER, OTHER_TEACHER)
+      await seedFullCourse('course-1', [TEACHER])
+      const db = dbAs(OTHER_TEACHER)
+
+      await assertFails(deleteCourse(db, 'course-1'))
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore() as unknown as Firestore
+        expect((await getDoc(doc(adminDb, 'courses', 'course-1'))).exists()).toBe(true)
+      })
     })
   })
 })

@@ -131,6 +131,10 @@ function App() {
                       teacherEmail={user.email}
                       onChanged={refreshCourses}
                       onProjectingChange={setIsProjecting}
+                      onDeleted={async () => {
+                        await refreshCourses()
+                        setSelectedCourseId(null)
+                      }}
                     />
                   )
                 )}
