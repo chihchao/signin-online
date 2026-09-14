@@ -44,8 +44,23 @@ service cloud.firestore {
         request.resource.data.qrExpirySeconds > 0;
     }
 
-    // Only teacherEmails and qrExpirySeconds may change on update; the
-    // rest of the course's identity is immutable once created.
+    // The extra 狀態 options ("請假", "公假", ...) a teacher may pick
+    // beyond the fixed system statuses present/absent (always valid —
+    // see isValidAttendanceStatus — and never listed here). Defaults to
+    // an empty list via .get() so a course predating this field isn't
+    // rejected outright; it simply has no manual status options until
+    // its teacher saves some via 課程設定.
+    function isValidCustomStatuses() {
+      let statuses = request.resource.data.get('customStatuses', []);
+      return statuses is list &&
+        statuses.size() <= 20 &&
+        !('' in statuses) &&
+        statuses.toSet().size() == statuses.size();
+    }
+
+    // Only teacherEmails, qrExpirySeconds and customStatuses may change
+    // on update; the rest of the course's identity is immutable once
+    // created.
     function onlyMutableFieldsChanged() {
       return request.resource.data.name == resource.data.name &&
         request.resource.data.createdBy == resource.data.createdBy &&
@@ -66,7 +81,8 @@ service cloud.firestore {
     match /courses/{courseId} {
       allow create: if isWhitelistedTeacher() &&
         request.resource.data.teacherEmails == [request.auth.token.email] &&
-        isValidQrExpirySeconds();
+        isValidQrExpirySeconds() &&
+        isValidCustomStatuses();
       allow read: if isCourseTeacher();
       // An enrolled student may fetch (not list/browse) a course they're
       // in by its known id — needed by the self-check page (#9) to show
@@ -75,6 +91,7 @@ service cloud.firestore {
       allow update: if isCourseTeacher() &&
         isValidTeacherEmailsChange() &&
         isValidQrExpirySeconds() &&
+        isValidCustomStatuses() &&
         onlyMutableFieldsChanged();
 
       match /roster/{studentEmail} {
@@ -158,8 +175,14 @@ service cloud.firestore {
         token.createdAt > request.time - duration.value(course.qrExpirySeconds, 's');
     }
 
-    function isValidAttendanceStatus(status) {
-      return status in ['present', 'leave', 'official-leave', 'exempt', 'absent'];
+    // 'present' and 'absent' are fixed system statuses (self-check-in
+    // and endSession's batch-absent pass write them literally) and are
+    // always valid regardless of a course's custom status list. Every
+    // other status must be one of that course's own customStatuses —
+    // see isValidCustomStatuses for how that field is validated.
+    function isValidAttendanceStatus(courseId, status) {
+      return status == 'present' || status == 'absent' ||
+        status in get(/databases/$(database)/documents/courses/$(courseId)).data.get('customStatuses', []);
     }
 
     // A teacher writing on a student's behalf: 補登 (add a record for a
@@ -173,7 +196,7 @@ service cloud.firestore {
       return isTeacherOfCourse(data.courseId) &&
         isValidAttendanceDocId(attendanceId, data) &&
         data.keys().hasOnly(['sessionId', 'courseId', 'studentEmail', 'status', 'timestamp']) &&
-        isValidAttendanceStatus(data.status) &&
+        isValidAttendanceStatus(data.courseId, data.status) &&
         data.timestamp is timestamp &&
         get(/databases/$(database)/documents/sessions/$(data.sessionId)).data.courseId == data.courseId &&
         exists(/databases/$(database)/documents/courses/$(data.courseId)/roster/$(data.studentEmail));
@@ -191,7 +214,7 @@ service cloud.firestore {
       let data = request.resource.data;
 
       return isTeacherOfCourse(resource.data.courseId) &&
-        isValidAttendanceStatus(data.status) &&
+        isValidAttendanceStatus(resource.data.courseId, data.status) &&
         data.timestamp is timestamp &&
         data.sessionId == resource.data.sessionId &&
         data.courseId == resource.data.courseId &&

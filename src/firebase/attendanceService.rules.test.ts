@@ -78,6 +78,7 @@ describe('attendanceService (against Firestore rules via emulator)', () => {
         name: '測試課程',
         teacherEmails: [TEACHER],
         qrExpirySeconds: QR_EXPIRY_SECONDS,
+        customStatuses: ['leave', 'official-leave', 'exempt'],
         createdAt: new Date('2026-01-01T00:00:00Z'),
         createdBy: TEACHER,
       })
@@ -436,6 +437,55 @@ describe('attendanceService (against Firestore rules via emulator)', () => {
     })
   })
 
+  describe('per-course custom status options', () => {
+    it("lets a teacher record a status that's one of the course's own customStatuses", async () => {
+      await seedScenario()
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        await updateDoc(doc(db, 'courses', COURSE_ID), { customStatuses: ['事假'] })
+      })
+      const teacherDb = dbAs(TEACHER)
+
+      await assertSucceeds(addAttendanceRecord(teacherDb, SESSION_ID, COURSE_ID, STUDENT, '事假'))
+
+      const records = await listAttendanceForSession(teacherDb, COURSE_ID, SESSION_ID)
+      expect(records).toEqual([expect.objectContaining({ studentEmail: STUDENT, status: '事假' })])
+    })
+
+    it("denies a status that isn't present/absent/one of the course's own customStatuses", async () => {
+      await seedScenario()
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        await updateDoc(doc(db, 'courses', COURSE_ID), { customStatuses: ['事假'] })
+      })
+
+      await assertFails(addAttendanceRecord(dbAs(TEACHER), SESSION_ID, COURSE_ID, STUDENT, '喪假'))
+    })
+
+    it('denies any manual status on a course whose customStatuses field is absent, beyond present/absent', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        await setDoc(doc(db, 'courses', COURSE_ID), {
+          name: '測試課程',
+          teacherEmails: [TEACHER],
+          qrExpirySeconds: QR_EXPIRY_SECONDS,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          createdBy: TEACHER,
+        })
+        await setDoc(doc(db, 'courses', COURSE_ID, 'roster', STUDENT), {})
+        await setDoc(doc(db, 'sessions', SESSION_ID), {
+          courseId: COURSE_ID,
+          createdBy: TEACHER,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          endedAt: null,
+        })
+      })
+
+      await assertFails(addAttendanceRecord(dbAs(TEACHER), SESSION_ID, COURSE_ID, STUDENT, 'leave'))
+      await assertSucceeds(addAttendanceRecord(dbAs(TEACHER), SESSION_ID, COURSE_ID, STUDENT, 'absent'))
+    })
+  })
+
   describe('student self-check page (issue #9)', () => {
     const OTHER_COURSE_ID = 'course-2'
     const OTHER_SESSION_ID = 'session-2'
@@ -447,6 +497,7 @@ describe('attendanceService (against Firestore rules via emulator)', () => {
           name: '第二堂課',
           teacherEmails: [TEACHER],
           qrExpirySeconds: QR_EXPIRY_SECONDS,
+          customStatuses: ['leave', 'official-leave', 'exempt'],
           createdAt: new Date('2026-01-01T00:00:00Z'),
           createdBy: TEACHER,
         })

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ALL_STATUSES, STATUS_LABELS } from './attendanceStatusLabels'
+import { orderedStatusOptions, statusLabel } from './attendanceStatusLabels'
 import { formatDate } from './dateFormat'
 import { describeError } from './errors'
 import { db } from './firebase/config'
@@ -21,6 +21,7 @@ interface RosterRow {
 
 interface AttendanceRecordViewProps {
   courseId: string
+  customStatuses: string[]
   onClose: () => void
 }
 
@@ -35,7 +36,8 @@ function sessionLabel(session: SessionSummary): string {
 // separate "what's the current session" state for a caller to keep in
 // sync (that used to be a real race: see git history for
 // getCurrentSessionId).
-export function AttendanceRecordView({ courseId, onClose }: AttendanceRecordViewProps) {
+export function AttendanceRecordView({ courseId, customStatuses, onClose }: AttendanceRecordViewProps) {
+  const statusOptions = orderedStatusOptions(customStatuses)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [rows, setRows] = useState<RosterRow[]>([])
@@ -194,11 +196,19 @@ export function AttendanceRecordView({ courseId, onClose }: AttendanceRecordView
                       onChange={(event) => handleStatusChange(row, event.target.value as AttendanceStatus)}
                     >
                       {row.status === null && <option value="">未簽到</option>}
-                      {ALL_STATUSES.map((status) => (
+                      {statusOptions.map((status) => (
                         <option key={status} value={status}>
-                          {STATUS_LABELS[status]}
+                          {statusLabel(status)}
                         </option>
                       ))}
+                      {/* A record's status can predate the course's current
+                          customStatuses (a legacy status, or one since
+                          renamed/removed in 課程設定) — without its own
+                          <option>, the <select> would silently fall back to
+                          showing a different status than what's stored. */}
+                      {row.status !== null && !statusOptions.includes(row.status) && (
+                        <option value={row.status}>{statusLabel(row.status)}</option>
+                      )}
                     </select>
                   </td>
                   <td>

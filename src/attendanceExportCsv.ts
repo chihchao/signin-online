@@ -1,4 +1,4 @@
-import { STATUS_LABELS } from './attendanceStatusLabels'
+import { statusLabel } from './attendanceStatusLabels'
 import { formatDate } from './dateFormat'
 import type { AttendanceExportRow } from './firebase/attendanceService'
 
@@ -12,7 +12,7 @@ export function buildAttendanceExportCsv(courseName: string, rows: AttendanceExp
   const lines = [HEADER.join(',')]
   for (const row of rows) {
     lines.push(
-      [row.studentEmail, courseName, formatDate(row.timestamp), STATUS_LABELS[row.status]]
+      [row.studentEmail, courseName, formatDate(row.timestamp), statusLabel(row.status)]
         .map(escapeCsvField)
         .join(','),
     )

@@ -4,7 +4,9 @@ import { AttendanceRecordView } from './AttendanceRecordView'
 import { db } from './firebase/config'
 import {
   addCourseTeacher,
+  DEFAULT_CUSTOM_STATUSES,
   removeCourseTeacher,
+  updateCustomStatuses,
   updateQrExpirySeconds,
   type Course,
 } from './firebase/coursesService'
@@ -201,7 +203,13 @@ export function CourseSettings({ course, teacherEmail, onChanged, onProjectingCh
   }
 
   if (isManagingAttendance) {
-    return <AttendanceRecordView courseId={course.id} onClose={() => setIsManagingAttendance(false)} />
+    return (
+      <AttendanceRecordView
+        courseId={course.id}
+        customStatuses={course.customStatuses ?? DEFAULT_CUSTOM_STATUSES}
+        onClose={() => setIsManagingAttendance(false)}
+      />
+    )
   }
 
   if (isEditingSettings) {
@@ -269,6 +277,12 @@ export function CourseSettings({ course, teacherEmail, onChanged, onProjectingCh
             </form>
           </div>
 
+          <StatusOptionsManager
+            courseId={course.id}
+            customStatuses={course.customStatuses ?? DEFAULT_CUSTOM_STATUSES}
+            onChanged={onChanged}
+          />
+
           <RosterManager courseId={course.id} />
           <AttendanceExportView courseId={course.id} courseName={course.name} />
         </div>
@@ -301,12 +315,103 @@ export function CourseSettings({ course, teacherEmail, onChanged, onProjectingCh
   )
 }
 
+interface StatusOptionsManagerProps {
+  courseId: string
+  customStatuses: string[]
+  onChanged: () => Promise<void>
+}
+
+// 出席/缺席 are fixed system statuses (see isValidAttendanceStatus in
+// firestore.rules) and never appear here — this only manages the
+// extra options a teacher can freely rename, add to, or remove.
+function StatusOptionsManager({ courseId, customStatuses, onChanged }: StatusOptionsManagerProps) {
+  const [draft, setDraft] = useState(customStatuses)
+  const [lastSeenCustomStatuses, setLastSeenCustomStatuses] = useState(customStatuses)
+  const [error, setError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Adjust local draft state when the underlying course document changes
+  // (e.g. another teacher edited it), without discarding an in-progress
+  // edit on every unrelated re-render — mirrors CourseSettings'
+  // qrExpirySeconds handling above.
+  if (customStatuses !== lastSeenCustomStatuses) {
+    setLastSeenCustomStatuses(customStatuses)
+    setDraft(customStatuses)
+  }
+
+  function updateDraftItem(index: number, value: string) {
+    setDraft((current) => current.map((item, i) => (i === index ? value : item)))
+  }
+
+  function removeDraftItem(index: number) {
+    setDraft((current) => current.filter((_, i) => i !== index))
+  }
+
+  async function handleSave(event: React.FormEvent) {
+    event.preventDefault()
+    const cleaned = draft.map((item) => item.trim()).filter((item) => item.length > 0)
+    setError(null)
+    setIsSaving(true)
+    try {
+      await updateCustomStatuses(db, courseId, cleaned)
+      setDraft(cleaned)
+      await onChanged()
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h4>出席狀態選項</h4>
+      <p style={{ marginTop: 0, fontSize: '0.875rem', color: 'var(--color-muted-foreground)' }}>
+        「出席」與「缺席」由系統自動記錄，無法修改。
+      </p>
+
+      <form onSubmit={handleSave}>
+        <ul className="list">
+          {draft.map((status, index) => (
+            <li key={index} className="list-item">
+              <input value={status} onChange={(event) => updateDraftItem(index, event.target.value)} />
+              <button
+                type="button"
+                className="btn btn-destructive btn-sm"
+                onClick={() => removeDraftItem(index)}
+              >
+                移除
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+          <button type="button" className="btn btn-secondary" onClick={() => setDraft((current) => [...current, ''])}>
+            新增狀態
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={isSaving}>
+            {isSaving ? '儲存中…' : '儲存'}
+          </button>
+        </div>
+      </form>
+
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
 interface RosterManagerProps {
   courseId: string
 }
 
 function RosterManager({ courseId }: RosterManagerProps) {
   const [roster, setRoster] = useState<{ email: string; name: string }[]>([])
+  const [isManaging, setIsManaging] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [newStudentEmail, setNewStudentEmail] = useState('')
   const [newStudentName, setNewStudentName] = useState('')
@@ -361,57 +466,70 @@ function RosterManager({ courseId }: RosterManagerProps) {
   return (
     <div className="panel">
       <h4>選課名單</h4>
-      <ul className="list list--scroll">
-        {roster.map((entry) => (
-          <li key={entry.email} className="list-item">
-            <span>
-              {entry.name ? `${entry.name}（${entry.email}）` : entry.email}
-            </span>
-            <button
-              type="button"
-              className="btn btn-destructive btn-sm"
-              onClick={() => handleRemoveStudent(entry.email)}
-            >
-              移除
+
+      {!isManaging ? (
+        <button type="button" className="btn btn-secondary" onClick={() => setIsManaging(true)}>
+          管理名單（{roster.length} 位學生）
+        </button>
+      ) : (
+        <>
+          <button type="button" className="btn btn-secondary" onClick={() => setIsManaging(false)}>
+            收合
+          </button>
+
+          <ul className="list list--scroll">
+            {roster.map((entry) => (
+              <li key={entry.email} className="list-item">
+                <span>
+                  {entry.name ? `${entry.name}（${entry.email}）` : entry.email}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-destructive btn-sm"
+                  onClick={() => handleRemoveStudent(entry.email)}
+                >
+                  移除
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <form onSubmit={handleAddStudent}>
+            <label>
+              新增學生 email
+              <input
+                value={newStudentEmail}
+                onChange={(event) => setNewStudentEmail(event.target.value)}
+              />
+            </label>
+            <label>
+              學生姓名
+              <input
+                value={newStudentName}
+                onChange={(event) => setNewStudentName(event.target.value)}
+              />
+            </label>
+            <button type="submit" className="btn btn-primary">
+              新增
             </button>
-          </li>
-        ))}
-      </ul>
+          </form>
 
-      <form onSubmit={handleAddStudent}>
-        <label>
-          新增學生 email
-          <input
-            value={newStudentEmail}
-            onChange={(event) => setNewStudentEmail(event.target.value)}
-          />
-        </label>
-        <label>
-          學生姓名
-          <input
-            value={newStudentName}
-            onChange={(event) => setNewStudentName(event.target.value)}
-          />
-        </label>
-        <button type="submit" className="btn btn-primary">
-          新增
-        </button>
-      </form>
-
-      <form onSubmit={handleImport}>
-        <label>
-          貼上選課名單（每行「email,姓名」）
-          <textarea
-            rows={4}
-            placeholder={'student1@example.com,王小明\nstudent2@example.com,陳小華'}
-            value={pasteText}
-            onChange={(event) => setPasteText(event.target.value)}
-          />
-        </label>
-        <button type="submit" className="btn btn-primary">
-          批次匯入
-        </button>
-      </form>
+          <form onSubmit={handleImport}>
+            <label>
+              貼上選課名單（每行「email,姓名」）
+              <textarea
+                rows={4}
+                placeholder={'student1@example.com,王小明\nstudent2@example.com,陳小華'}
+                value={pasteText}
+                onChange={(event) => setPasteText(event.target.value)}
+              />
+            </label>
+            <button type="submit" className="btn btn-primary">
+              批次匯入
+            </button>
+          </form>
+        </>
+      )}
 
       {error && (
         <p role="alert" className="status-message status-message--error">

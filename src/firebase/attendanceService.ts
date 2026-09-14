@@ -17,7 +17,11 @@ import { normalizeEmail } from '../email'
 import { attendanceDocId } from './attendanceDocId'
 import { isPermissionDeniedError } from './errors'
 
-export type AttendanceStatus = 'present' | 'leave' | 'official-leave' | 'exempt' | 'absent'
+// 'present' and 'absent' are the two fixed system statuses (see
+// firestore.rules' isValidAttendanceStatus); anything else is one of a
+// course's own customStatuses — a teacher-defined string, not a fixed
+// union — so this is intentionally just `string`.
+export type AttendanceStatus = string
 
 export interface AttendanceRecord {
   studentEmail: string

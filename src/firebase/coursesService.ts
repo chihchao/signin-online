@@ -19,9 +19,18 @@ export interface Course {
   name: string
   teacherEmails: string[]
   qrExpirySeconds: number
+  // Absent on a course created before this field existed — callers
+  // should fall back to DEFAULT_CUSTOM_STATUSES, as CourseManager does.
+  customStatuses?: string[]
 }
 
 const DEFAULT_QR_EXPIRY_SECONDS = 25
+
+// The additional 狀態 options offered beyond the fixed 出席/缺席 system
+// statuses (see isValidAttendanceStatus in firestore.rules) — a
+// starting point a teacher can freely rename, add to, or remove from
+// via 課程設定.
+export const DEFAULT_CUSTOM_STATUSES = ['請假', '公假', '免簽']
 
 export async function createCourse(
   db: Firestore,
@@ -33,6 +42,7 @@ export async function createCourse(
     name,
     teacherEmails: [teacherEmail],
     qrExpirySeconds: DEFAULT_QR_EXPIRY_SECONDS,
+    customStatuses: DEFAULT_CUSTOM_STATUSES,
     createdAt: serverTimestamp(),
     createdBy: teacherEmail,
   })
@@ -91,4 +101,12 @@ export async function updateQrExpirySeconds(
   seconds: number,
 ): Promise<void> {
   await updateDoc(doc(db, 'courses', courseId), { qrExpirySeconds: seconds })
+}
+
+export async function updateCustomStatuses(
+  db: Firestore,
+  courseId: string,
+  customStatuses: string[],
+): Promise<void> {
+  await updateDoc(doc(db, 'courses', courseId), { customStatuses })
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { STATUS_LABELS, STATUS_VARIANTS } from './attendanceStatusLabels'
+import { statusLabel, statusVariant } from './attendanceStatusLabels'
 import { formatDate } from './dateFormat'
 import { describeError } from './errors'
 import { db } from './firebase/config'
@@ -116,8 +116,8 @@ export function MyAttendanceView({ studentEmail }: MyAttendanceViewProps) {
                   {group.records.map((record) => (
                     <li key={record.sessionId} className="list-item">
                       <span>{formatDate(record.timestamp)}</span>
-                      <span className={`badge badge--${STATUS_VARIANTS[record.status]}`}>
-                        {STATUS_LABELS[record.status]}
+                      <span className={`badge badge--${statusVariant(record.status)}`}>
+                        {statusLabel(record.status)}
                       </span>
                     </li>
                   ))}

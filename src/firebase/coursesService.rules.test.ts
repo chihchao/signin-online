@@ -11,9 +11,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import {
   addCourseTeacher,
   createCourse,
+  DEFAULT_CUSTOM_STATUSES,
   getCourse,
   listMyCourses,
   removeCourseTeacher,
+  updateCustomStatuses,
   updateQrExpirySeconds,
 } from './coursesService'
 
@@ -189,5 +191,72 @@ describe('coursesService (against Firestore rules via emulator)', () => {
 
     await assertFails(updateQrExpirySeconds(db, 'course-1', 0))
     await assertFails(updateQrExpirySeconds(db, 'course-1', -5))
+  })
+
+  describe('custom status options', () => {
+    it('creates a course with the default custom status options', async () => {
+      await seedTeachers(TEACHER)
+      const db = dbAs(TEACHER)
+
+      const courseId = await createCourse(db, TEACHER, '資料結構')
+
+      const course = await getDoc(doc(db, 'courses', courseId))
+      expect(course.data()).toMatchObject({ customStatuses: DEFAULT_CUSTOM_STATUSES })
+    })
+
+    it('lets a course teacher update the custom status options', async () => {
+      await seedTeachers(TEACHER)
+      await seedCourse('course-1', [TEACHER])
+      const db = dbAs(TEACHER)
+
+      await assertSucceeds(updateCustomStatuses(db, 'course-1', ['事假', '喪假']))
+
+      const course = await getCourse(db, 'course-1')
+      expect(course?.customStatuses).toEqual(['事假', '喪假'])
+    })
+
+    it('denies a non-course-teacher from updating the custom status options', async () => {
+      await seedTeachers(TEACHER, OTHER_TEACHER)
+      await seedCourse('course-1', [TEACHER])
+      const db = dbAs(OTHER_TEACHER)
+
+      await assertFails(updateCustomStatuses(db, 'course-1', ['事假']))
+    })
+
+    it('denies setting customStatuses to something other than a list, bypassing the service layer', async () => {
+      await seedTeachers(TEACHER)
+      await seedCourse('course-1', [TEACHER])
+      const db = dbAs(TEACHER)
+
+      await assertFails(updateDoc(doc(db, 'courses', 'course-1'), { customStatuses: '事假' }))
+    })
+
+    it('denies duplicate entries in customStatuses, bypassing the service layer', async () => {
+      await seedTeachers(TEACHER)
+      await seedCourse('course-1', [TEACHER])
+      const db = dbAs(TEACHER)
+
+      await assertFails(updateDoc(doc(db, 'courses', 'course-1'), { customStatuses: ['請假', '請假'] }))
+    })
+
+    it('denies an empty-string entry in customStatuses, bypassing the service layer', async () => {
+      await seedTeachers(TEACHER)
+      await seedCourse('course-1', [TEACHER])
+      const db = dbAs(TEACHER)
+
+      await assertFails(updateDoc(doc(db, 'courses', 'course-1'), { customStatuses: ['請假', ''] }))
+    })
+
+    it('denies an excessively long customStatuses list, bypassing the service layer', async () => {
+      await seedTeachers(TEACHER)
+      await seedCourse('course-1', [TEACHER])
+      const db = dbAs(TEACHER)
+
+      await assertFails(
+        updateDoc(doc(db, 'courses', 'course-1'), {
+          customStatuses: Array.from({ length: 21 }, (_, i) => `狀態${i}`),
+        }),
+      )
+    })
   })
 })
