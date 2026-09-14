@@ -6,19 +6,25 @@ import { describeError } from './errors'
 import { db } from './firebase/config'
 import { createToken, endSession, startOrResumeSession } from './firebase/sessionsService'
 
-const TOKEN_REFRESH_INTERVAL_MS = 15_000
-
 interface ProjectionViewProps {
   courseId: string
   courseName: string
   teacherEmail: string
+  // The QR must refresh at least as often as a token stays valid for
+  // check-in (see isValidStudentAttendanceCreate in firestore.rules) —
+  // otherwise a screenshotted code would stay scannable even after a
+  // newer one replaces it on screen. Tying the refresh cadence to this
+  // setting keeps "QR 過期秒數" meaning what a teacher expects: how
+  // often the code on screen actually changes.
+  qrExpirySeconds: number
   onClose: () => void
 }
 
-export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: ProjectionViewProps) {
+export function ProjectionView({ courseId, courseName, teacherEmail, qrExpirySeconds, onClose }: ProjectionViewProps) {
+  const tokenRefreshIntervalMs = qrExpirySeconds * 1000
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
-  const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(TOKEN_REFRESH_INTERVAL_MS / 1000)
+  const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(qrExpirySeconds)
   const [error, setError] = useState<string | null>(null)
   const [isEnding, setIsEnding] = useState(false)
   const [hasEnded, setHasEnded] = useState(false)
@@ -56,7 +62,7 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
           setError(null)
           // Reset right where the refresh actually happens, rather
           // than reacting to qrDataUrl changing in a separate effect.
-          setSecondsUntilRefresh(TOKEN_REFRESH_INTERVAL_MS / 1000)
+          setSecondsUntilRefresh(qrExpirySeconds)
         }
       } catch (err) {
         if (!cancelled) setError(describeError(err))
@@ -64,17 +70,17 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
     }
 
     refreshToken()
-    const intervalId = setInterval(refreshToken, TOKEN_REFRESH_INTERVAL_MS)
+    const intervalId = setInterval(refreshToken, tokenRefreshIntervalMs)
 
     return () => {
       cancelled = true
       clearInterval(intervalId)
     }
-  }, [sessionId, hasEnded])
+  }, [sessionId, hasEnded, tokenRefreshIntervalMs, qrExpirySeconds])
 
   // Ticks the visible countdown every second while a session is live —
-  // the actual reset-to-15 happens above, next to the refresh it's
-  // counting down to.
+  // the actual reset happens above, next to the refresh it's counting
+  // down to.
   useEffect(() => {
     if (!sessionId || hasEnded) return
 

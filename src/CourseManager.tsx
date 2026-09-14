@@ -194,6 +194,7 @@ export function CourseSettings({ course, teacherEmail, onChanged, onProjectingCh
         courseId={course.id}
         courseName={course.name}
         teacherEmail={teacherEmail}
+        qrExpirySeconds={course.qrExpirySeconds}
         onClose={() => setIsProjecting(false)}
       />
     )
