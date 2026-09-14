@@ -74,11 +74,20 @@ body {
   align-items: center;
   justify-content: center;
   padding: var(--space-5) var(--space-4);
+  /* Safety net: nothing below should ever need this, but a page-level
+     horizontal scrollbar/shift on mobile is a worse failure mode than
+     silently clipping a rare overflow. */
+  overflow-x: hidden;
 }
 
 .app-shell {
   width: 100%;
   max-width: 880px;
+  /* Flex items default to min-width:auto (their content's intrinsic
+     size), which lets a wide descendant (a table, a long email) force
+     this — and everything below it — wider than the viewport instead
+     of shrinking and letting its own overflow-x:auto do its job. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -152,10 +161,12 @@ h4 {
   font-weight: 700;
   color: var(--color-foreground);
   margin: 0 0 var(--space-3);
+  overflow-wrap: break-word;
 }
 
 p {
   margin: 0 0 var(--space-3);
+  overflow-wrap: break-word;
 }
 
 a {
@@ -239,6 +250,7 @@ button {
 
 .card {
   width: 100%;
+  min-width: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -259,6 +271,7 @@ button {
    as a grid cell in any column count. */
 .settings-grid {
   width: 100%;
+  min-width: 0;
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--space-4);
@@ -272,6 +285,10 @@ button {
 }
 
 .panel {
+  /* Same min-width:auto trap as flex items — grid items need this
+     too, or a wide child (the roster list, a long email) stretches
+     the grid track instead of scrolling/wrapping inside it. */
+  min-width: 0;
   background: var(--color-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -307,6 +324,19 @@ button {
   border-radius: var(--radius-sm);
 }
 
+/* The label/email side of a list item — the other child is always a
+   short button or badge that's fine at its natural size, but a long
+   unbroken email has no natural break point, so without this it
+   pushes the row (and the page) wider instead of wrapping. */
+.list-item > *:first-child {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.list-item > *:last-child {
+  flex-shrink: 0;
+}
+
 .list-item--button {
   display: block;
   width: 100%;
@@ -318,6 +348,7 @@ button {
   font-size: 1rem;
   text-align: left;
   color: var(--color-foreground);
+  overflow-wrap: break-word;
   transition:
     border-color 150ms ease,
     background-color 150ms ease;
@@ -356,6 +387,11 @@ button {
   transition: background-color 150ms ease;
 }
 
+.accordion-trigger > *:first-child {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
 .accordion-trigger:hover {
   background: var(--color-muted);
 }
@@ -366,6 +402,7 @@ button {
 }
 
 .accordion-icon {
+  flex-shrink: 0;
   color: var(--color-muted-foreground);
   font-weight: 700;
 }
@@ -543,6 +580,11 @@ textarea:focus-visible {
   top: calc(100% + var(--space-2));
   right: 0;
   width: max(260px, 100%);
+  /* The trigger button (this panel's positioning parent) is much
+     narrower than 260px, so without a viewport-relative cap this can
+     run past the screen edge on a narrow phone — the page has
+     --space-4 padding on each side (see #root), so match that. */
+  max-width: calc(100vw - 2 * var(--space-4));
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
