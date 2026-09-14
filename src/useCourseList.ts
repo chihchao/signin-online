@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { describeError } from './errors'
 import { db } from './firebase/config'
 import { createCourse, listMyCourses, type Course } from './firebase/coursesService'
+import { isWhitelistedTeacher } from './firebase/teachersService'
 
 // Owns the teacher's course list + which one is selected. Lifted out
 // of a single CourseManager component (rather than owned locally by
@@ -14,6 +15,7 @@ export function useCourseList(teacherEmail: string) {
   const [courses, setCourses] = useState<Course[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [isTeacher, setIsTeacher] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function refreshCourses() {
@@ -24,6 +26,28 @@ export function useCourseList(teacherEmail: string) {
   useEffect(() => {
     refreshCourses().catch((err) => setError(describeError(err)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teacherEmail])
+
+  // Whether this signed-in user is on the teacher whitelist at all —
+  // course creation/management is teacher-only, and previously the UI
+  // showed those controls to anyone signed in, only for Firestore
+  // rules to reject the actual write. This hides them up front instead.
+  useEffect(() => {
+    if (!teacherEmail) {
+      setIsTeacher(false)
+      return
+    }
+    let cancelled = false
+    isWhitelistedTeacher(db, teacherEmail)
+      .then((result) => {
+        if (!cancelled) setIsTeacher(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(describeError(err))
+      })
+    return () => {
+      cancelled = true
+    }
   }, [teacherEmail])
 
   async function handleCreateCourse(name: string): Promise<boolean> {
@@ -49,6 +73,7 @@ export function useCourseList(teacherEmail: string) {
     selectedCourse,
     setSelectedCourseId,
     isCreating,
+    isTeacher,
     error,
     refreshCourses,
     handleCreateCourse,

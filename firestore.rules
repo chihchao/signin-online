@@ -223,6 +223,16 @@ service cloud.firestore {
       allow delete: if isTeacherOfCourse(resource.data.courseId);
     }
 
+    // A signed-in user may check only their own whitelist entry (by
+    // path segment, so this is well-defined even when no such document
+    // exists) — never list the whole collection. Compared against the
+    // raw (not lowercased) token email to match isWhitelistedTeacher()
+    // above, since teachers/{email} doc ids are Console-managed by
+    // hand, not normalized like roster/attendance docs are.
+    match /teachers/{email} {
+      allow get: if isSignedIn() && request.auth.token.email == email;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

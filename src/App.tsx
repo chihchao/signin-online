@@ -24,6 +24,7 @@ function App() {
     selectedCourse,
     setSelectedCourseId,
     isCreating,
+    isTeacher,
     error: courseError,
     refreshCourses,
     handleCreateCourse,
@@ -96,7 +97,7 @@ function App() {
                     >
                       {showMyAttendance ? '返回課程管理' : '我的出席紀錄'}
                     </button>
-                    {!showMyAttendance && (
+                    {!showMyAttendance && isTeacher && (
                       <CourseMenu
                         courses={courses}
                         onSelect={setSelectedCourseId}
@@ -112,7 +113,7 @@ function App() {
                   </p>
                 )}
 
-                {isCreateDialogOpen && (
+                {isTeacher && isCreateDialogOpen && (
                   <CreateCourseDialog
                     isCreating={isCreating}
                     onCreate={handleCreate}
