@@ -15,6 +15,7 @@ import { listSessionsForCourse, type SessionSummary } from './firebase/sessionsS
 
 interface RosterRow {
   email: string
+  name: string
   status: AttendanceStatus | null
 }
 
@@ -67,13 +68,19 @@ export function AttendanceRecordView({ courseId, onClose }: AttendanceRecordView
       setRows([])
       return
     }
-    const [emails, records] = await Promise.all([
+    const [roster, records] = await Promise.all([
       listRoster(db, courseId),
       listAttendanceForSession(db, courseId, selectedSessionId),
     ])
     if (isStale()) return
     const statusByEmail = new Map(records.map((record) => [record.studentEmail, record.status]))
-    setRows(emails.map((email) => ({ email, status: statusByEmail.get(email) ?? null })))
+    setRows(
+      roster.map((entry) => ({
+        email: entry.email,
+        name: entry.name,
+        status: statusByEmail.get(entry.email) ?? null,
+      })),
+    )
   }
 
   useEffect(() => {
@@ -129,11 +136,15 @@ export function AttendanceRecordView({ courseId, onClose }: AttendanceRecordView
           關閉
         </button>
         {sessions.length > 1 && (
-          <label style={{ width: 'auto' }}>
-            查看場次
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <label htmlFor="session-select" style={{ width: 'auto', margin: 0 }}>
+              查看場次
+            </label>
             <select
+              id="session-select"
               value={selectedSessionId ?? ''}
               onChange={(event) => setSelectedSessionId(event.target.value)}
+              style={{ marginTop: 0 }}
             >
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
@@ -141,7 +152,7 @@ export function AttendanceRecordView({ courseId, onClose }: AttendanceRecordView
                 </option>
               ))}
             </select>
-          </label>
+          </div>
         )}
         {sessions.length === 1 && (
           <span style={{ fontSize: '0.875rem', color: 'var(--color-muted-foreground)' }}>
@@ -166,6 +177,7 @@ export function AttendanceRecordView({ courseId, onClose }: AttendanceRecordView
             <thead>
               <tr>
                 <th>學生</th>
+                <th>姓名</th>
                 <th>狀態</th>
                 <th></th>
               </tr>
@@ -174,6 +186,7 @@ export function AttendanceRecordView({ courseId, onClose }: AttendanceRecordView
               {rows.map((row) => (
                 <tr key={row.email}>
                   <td>{row.email}</td>
+                  <td>{row.name}</td>
                   <td>
                     <select
                       value={row.status ?? ''}

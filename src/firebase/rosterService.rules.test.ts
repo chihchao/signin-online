@@ -59,30 +59,31 @@ describe('rosterService (against Firestore rules via emulator)', () => {
     })
   }
 
-  it('lets a course teacher bulk-import a roster via pasted emails', async () => {
+  it('lets a course teacher bulk-import a roster via pasted "email,name" lines', async () => {
     await seedCourse('course-1', [TEACHER])
     const db = dbAs(TEACHER)
 
-    await assertSucceeds(
-      importRoster(db, 'course-1', `${STUDENT}\n${STUDENT_2}`),
-    )
+    await assertSucceeds(importRoster(db, 'course-1', `${STUDENT},Alice\n${STUDENT_2},Bob`))
 
-    expect(await listRoster(db, 'course-1')).toEqual([STUDENT, STUDENT_2].sort())
+    expect(await listRoster(db, 'course-1')).toEqual([
+      { email: STUDENT, name: 'Alice' },
+      { email: STUDENT_2, name: 'Bob' },
+    ])
   })
 
   it('lets a course teacher add a single student individually', async () => {
     await seedCourse('course-1', [TEACHER])
     const db = dbAs(TEACHER)
 
-    await assertSucceeds(addRosterStudent(db, 'course-1', STUDENT))
+    await assertSucceeds(addRosterStudent(db, 'course-1', STUDENT, 'Alice'))
 
-    expect(await listRoster(db, 'course-1')).toEqual([STUDENT])
+    expect(await listRoster(db, 'course-1')).toEqual([{ email: STUDENT, name: 'Alice' }])
   })
 
   it('lets a course teacher remove a single student', async () => {
     await seedCourse('course-1', [TEACHER])
     const db = dbAs(TEACHER)
-    await addRosterStudent(db, 'course-1', STUDENT)
+    await addRosterStudent(db, 'course-1', STUDENT, 'Alice')
 
     await assertSucceeds(removeRosterStudent(db, 'course-1', STUDENT))
 
@@ -91,21 +92,21 @@ describe('rosterService (against Firestore rules via emulator)', () => {
 
   it('denies a non-course-teacher from importing, adding, or removing roster entries', async () => {
     await seedCourse('course-1', [TEACHER])
-    await addRosterStudent(dbAs(TEACHER), 'course-1', STUDENT)
+    await addRosterStudent(dbAs(TEACHER), 'course-1', STUDENT, 'Alice')
     const db = dbAs(OTHER_TEACHER)
 
-    await assertFails(importRoster(db, 'course-1', STUDENT_2))
-    await assertFails(addRosterStudent(db, 'course-1', STUDENT_2))
+    await assertFails(importRoster(db, 'course-1', `${STUDENT_2},Bob`))
+    await assertFails(addRosterStudent(db, 'course-1', STUDENT_2, 'Bob'))
     await assertFails(removeRosterStudent(db, 'course-1', STUDENT))
 
-    expect(await listRoster(dbAs(TEACHER), 'course-1')).toEqual([STUDENT])
+    expect(await listRoster(dbAs(TEACHER), 'course-1')).toEqual([{ email: STUDENT, name: 'Alice' }])
   })
 
   it('denies a student (not a course teacher) from reading or writing the roster', async () => {
     await seedCourse('course-1', [TEACHER])
     const db = dbAs(STUDENT)
 
-    await assertFails(addRosterStudent(db, 'course-1', STUDENT))
+    await assertFails(addRosterStudent(db, 'course-1', STUDENT, 'Alice'))
     await assertFails(listRoster(db, 'course-1'))
   })
 })

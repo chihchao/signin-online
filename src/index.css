@@ -474,3 +474,43 @@ textarea:focus-visible {
   outline: 2px solid var(--color-ring);
   outline-offset: 1px;
 }
+
+/* Dropdown menu (e.g. 課程管理) */
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  width: max(260px, 100%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  /* The only shadow in this flat design system — reserved for
+     content that floats above the page rather than sitting in the
+     normal flow, where the border alone isn't enough to read as
+     "on top of" the content behind it. */
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+/* Dialog (native <dialog> element, e.g. 建立課程) */
+
+dialog.dialog {
+  width: min(90vw, 420px);
+  margin: auto;
+  padding: var(--space-5);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  border: none;
+  border-radius: var(--radius);
+}
+
+dialog.dialog::backdrop {
+  background: rgba(15, 23, 42, 0.5);
+}

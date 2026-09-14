@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AttendanceExportView } from './AttendanceExportView'
 import { AttendanceRecordView } from './AttendanceRecordView'
 import { db } from './firebase/config'
@@ -22,6 +22,7 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
   const [courses, setCourses] = useState<Course[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function refreshCourses() {
@@ -33,15 +34,14 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherEmail])
 
-  async function handleCreateCourse() {
-    const name = window.prompt('請輸入課程名稱')
-    if (!name || !name.trim() || isCreating) return
+  async function handleCreateCourse(name: string) {
     setError(null)
     setIsCreating(true)
     try {
-      const courseId = await createCourse(db, teacherEmail, name.trim())
+      const courseId = await createCourse(db, teacherEmail, name)
       await refreshCourses()
       setSelectedCourseId(courseId)
+      setIsCreateDialogOpen(false)
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -53,32 +53,27 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
 
   return (
     <>
-      <section className="card">
-        <h2>我的課程</h2>
-        <ul className="list">
-          {courses.map((course) => (
-            <li key={course.id}>
-              <button
-                type="button"
-                className="list-item--button"
-                onClick={() => setSelectedCourseId(course.id)}
-              >
-                {course.name}
-              </button>
-            </li>
-          ))}
-        </ul>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+        <CourseMenu
+          courses={courses}
+          onSelect={setSelectedCourseId}
+          onCreateClick={() => setIsCreateDialogOpen(true)}
+        />
+      </div>
 
-        <button type="button" className="btn btn-primary" disabled={isCreating} onClick={handleCreateCourse}>
-          {isCreating ? '建立中…' : '建立課程'}
-        </button>
+      {error && (
+        <p role="alert" className="status-message status-message--error">
+          {error}
+        </p>
+      )}
 
-        {error && (
-          <p role="alert" className="status-message status-message--error">
-            {error}
-          </p>
-        )}
-      </section>
+      {isCreateDialogOpen && (
+        <CreateCourseDialog
+          isCreating={isCreating}
+          onCreate={handleCreateCourse}
+          onCancel={() => setIsCreateDialogOpen(false)}
+        />
+      )}
 
       {selectedCourse && (
         <CourseSettings
@@ -89,6 +84,107 @@ export function CourseManager({ teacherEmail }: CourseManagerProps) {
         />
       )}
     </>
+  )
+}
+
+interface CourseMenuProps {
+  courses: Course[]
+  onSelect: (courseId: string) => void
+  onCreateClick: () => void
+}
+
+function CourseMenu({ courses, onSelect, onCreateClick }: CourseMenuProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
+
+  return (
+    <div className="dropdown" ref={containerRef}>
+      <button type="button" className="btn btn-secondary" onClick={() => setIsOpen((current) => !current)}>
+        課程管理 ▾
+      </button>
+      {isOpen && (
+        <div className="dropdown-panel">
+          <ul className="list">
+            {courses.map((course) => (
+              <li key={course.id}>
+                <button
+                  type="button"
+                  className="list-item--button"
+                  onClick={() => {
+                    onSelect(course.id)
+                    setIsOpen(false)
+                  }}
+                >
+                  {course.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            onClick={() => {
+              onCreateClick()
+              setIsOpen(false)
+            }}
+          >
+            建立課程
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface CreateCourseDialogProps {
+  isCreating: boolean
+  onCreate: (name: string) => void
+  onCancel: () => void
+}
+
+function CreateCourseDialog({ isCreating, onCreate, onCancel }: CreateCourseDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const [name, setName] = useState('')
+
+  useEffect(() => {
+    dialogRef.current?.showModal()
+  }, [])
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!name.trim() || isCreating) return
+    onCreate(name.trim())
+  }
+
+  return (
+    <dialog ref={dialogRef} className="dialog" onClose={onCancel}>
+      <form onSubmit={handleSubmit}>
+        <h3>建立課程</h3>
+        <label>
+          課程名稱
+          <input autoFocus value={name} disabled={isCreating} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+          <button type="button" className="btn btn-secondary" onClick={() => dialogRef.current?.close()}>
+            取消
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={isCreating}>
+            {isCreating ? '建立中…' : '建立'}
+          </button>
+        </div>
+      </form>
+    </dialog>
   )
 }
 
@@ -273,9 +369,10 @@ interface RosterManagerProps {
 }
 
 function RosterManager({ courseId }: RosterManagerProps) {
-  const [roster, setRoster] = useState<string[]>([])
+  const [roster, setRoster] = useState<{ email: string; name: string }[]>([])
   const [pasteText, setPasteText] = useState('')
   const [newStudentEmail, setNewStudentEmail] = useState('')
+  const [newStudentName, setNewStudentName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function refreshRoster() {
@@ -305,8 +402,9 @@ function RosterManager({ courseId }: RosterManagerProps) {
     if (!newStudentEmail.trim()) return
     setError(null)
     try {
-      await addRosterStudent(db, courseId, newStudentEmail.trim())
+      await addRosterStudent(db, courseId, newStudentEmail.trim(), newStudentName.trim())
       setNewStudentEmail('')
+      setNewStudentName('')
       await refreshRoster()
     } catch (err) {
       setError(describeError(err))
@@ -327,10 +425,16 @@ function RosterManager({ courseId }: RosterManagerProps) {
     <div className="panel">
       <h4>選課名單</h4>
       <ul className="list list--scroll">
-        {roster.map((email) => (
-          <li key={email} className="list-item">
-            <span>{email}</span>
-            <button type="button" className="btn btn-destructive btn-sm" onClick={() => handleRemoveStudent(email)}>
+        {roster.map((entry) => (
+          <li key={entry.email} className="list-item">
+            <span>
+              {entry.name ? `${entry.name}（${entry.email}）` : entry.email}
+            </span>
+            <button
+              type="button"
+              className="btn btn-destructive btn-sm"
+              onClick={() => handleRemoveStudent(entry.email)}
+            >
               移除
             </button>
           </li>
@@ -345,6 +449,13 @@ function RosterManager({ courseId }: RosterManagerProps) {
             onChange={(event) => setNewStudentEmail(event.target.value)}
           />
         </label>
+        <label>
+          學生姓名
+          <input
+            value={newStudentName}
+            onChange={(event) => setNewStudentName(event.target.value)}
+          />
+        </label>
         <button type="submit" className="btn btn-primary">
           新增
         </button>
@@ -352,9 +463,10 @@ function RosterManager({ courseId }: RosterManagerProps) {
 
       <form onSubmit={handleImport}>
         <label>
-          貼上選課名單（每行一個 email）
+          貼上選課名單（每行「email,姓名」）
           <textarea
             rows={4}
+            placeholder={'student1@example.com,王小明\nstudent2@example.com,陳小華'}
             value={pasteText}
             onChange={(event) => setPasteText(event.target.value)}
           />

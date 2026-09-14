@@ -18,16 +18,27 @@ export function isValidEmail(email: string): boolean {
   return EMAIL_PATTERN.test(email)
 }
 
-export function parseEmailList(text: string): string[] {
+export interface RosterEntry {
+  email: string
+  name: string
+}
+
+// Each line is "email,name" (name optional — defaults to '' when a line
+// has no comma, e.g. an email-only list pasted from somewhere else).
+export function parseRosterList(text: string): RosterEntry[] {
   const seen = new Set<string>()
-  const emails: string[] = []
+  const entries: RosterEntry[] = []
   for (const rawLine of text.split(/\r?\n/)) {
-    const email = normalizeEmail(rawLine)
+    const commaIndex = rawLine.indexOf(',')
+    const rawEmail = commaIndex === -1 ? rawLine : rawLine.slice(0, commaIndex)
+    const rawName = commaIndex === -1 ? '' : rawLine.slice(commaIndex + 1)
+    const email = normalizeEmail(rawEmail)
+    const name = rawName.trim()
     if (email.length === 0 || seen.has(email) || !isValidEmail(email)) continue
     seen.add(email)
-    emails.push(email)
+    entries.push({ email, name })
   }
-  return emails
+  return entries
 }
 
 function rosterDoc(db: Firestore, courseId: string, email: string) {
@@ -47,25 +58,26 @@ const FIRESTORE_BATCH_LIMIT = 500
 export async function importRoster(
   db: Firestore,
   courseId: string,
-  emailsText: string,
-): Promise<string[]> {
-  const emails = parseEmailList(emailsText)
-  for (let start = 0; start < emails.length; start += FIRESTORE_BATCH_LIMIT) {
+  rosterText: string,
+): Promise<RosterEntry[]> {
+  const entries = parseRosterList(rosterText)
+  for (let start = 0; start < entries.length; start += FIRESTORE_BATCH_LIMIT) {
     const batch = writeBatch(db)
-    for (const email of emails.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
-      batch.set(rosterDoc(db, courseId, email), {})
+    for (const entry of entries.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+      batch.set(rosterDoc(db, courseId, entry.email), { name: entry.name })
     }
     await batch.commit()
   }
-  return emails
+  return entries
 }
 
 export async function addRosterStudent(
   db: Firestore,
   courseId: string,
   email: string,
+  name: string,
 ): Promise<void> {
-  await setDoc(rosterDoc(db, courseId, normalizeEmailOrThrow(email)), {})
+  await setDoc(rosterDoc(db, courseId, normalizeEmailOrThrow(email)), { name: name.trim() })
 }
 
 export async function removeRosterStudent(
@@ -76,7 +88,12 @@ export async function removeRosterStudent(
   await deleteDoc(rosterDoc(db, courseId, normalizeEmailOrThrow(email)))
 }
 
-export async function listRoster(db: Firestore, courseId: string): Promise<string[]> {
+export async function listRoster(db: Firestore, courseId: string): Promise<RosterEntry[]> {
   const snapshot = await getDocs(collection(db, 'courses', courseId, 'roster'))
-  return snapshot.docs.map((docSnapshot) => docSnapshot.id).sort()
+  return snapshot.docs
+    .map((docSnapshot) => ({
+      email: docSnapshot.id,
+      name: (docSnapshot.data().name as string | undefined) ?? '',
+    }))
+    .sort((a, b) => a.email.localeCompare(b.email))
 }
