@@ -14,9 +14,31 @@ interface DisplayRecord extends StudentAttendanceRecord {
   courseName: string
 }
 
+interface CourseGroup {
+  courseId: string
+  courseName: string
+  records: DisplayRecord[]
+}
+
+// records is already sorted newest-first, so grouping by first
+// appearance naturally orders courses by their most recent activity.
+function groupByCourse(records: DisplayRecord[]): CourseGroup[] {
+  const groups = new Map<string, CourseGroup>()
+  for (const record of records) {
+    const existing = groups.get(record.courseId)
+    if (existing) {
+      existing.records.push(record)
+    } else {
+      groups.set(record.courseId, { courseId: record.courseId, courseName: record.courseName, records: [record] })
+    }
+  }
+  return [...groups.values()]
+}
+
 export function MyAttendanceView({ studentEmail }: MyAttendanceViewProps) {
   const [records, setRecords] = useState<DisplayRecord[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -49,6 +71,20 @@ export function MyAttendanceView({ studentEmail }: MyAttendanceViewProps) {
     }
   }, [studentEmail])
 
+  function toggleCourse(courseId: string) {
+    setExpandedCourseIds((current) => {
+      const next = new Set(current)
+      if (next.has(courseId)) {
+        next.delete(courseId)
+      } else {
+        next.add(courseId)
+      }
+      return next
+    })
+  }
+
+  const groups = groupByCourse(records)
+
   return (
     <section className="card">
       <h2>我的出席紀錄</h2>
@@ -60,19 +96,36 @@ export function MyAttendanceView({ studentEmail }: MyAttendanceViewProps) {
       )}
 
       <ul className="list">
-        {records.map((record) => (
-          <li key={record.sessionId} className="list-item">
-            <div>
-              <div>{record.courseName}</div>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--color-muted-foreground)' }}>
-                {formatDate(record.timestamp)}
-              </div>
-            </div>
-            <span className={`badge badge--${STATUS_VARIANTS[record.status]}`}>
-              {STATUS_LABELS[record.status]}
-            </span>
-          </li>
-        ))}
+        {groups.map((group) => {
+          const isExpanded = expandedCourseIds.has(group.courseId)
+          return (
+            <li key={group.courseId} className="accordion-item">
+              <button
+                type="button"
+                className="accordion-trigger"
+                aria-expanded={isExpanded}
+                onClick={() => toggleCourse(group.courseId)}
+              >
+                <span>{group.courseName}</span>
+                <span className="accordion-icon" aria-hidden="true">
+                  {isExpanded ? '−' : '+'}
+                </span>
+              </button>
+              {isExpanded && (
+                <ul className="list accordion-panel">
+                  {group.records.map((record) => (
+                    <li key={record.sessionId} className="list-item">
+                      <span>{formatDate(record.timestamp)}</span>
+                      <span className={`badge badge--${STATUS_VARIANTS[record.status]}`}>
+                        {STATUS_LABELS[record.status]}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )
+        })}
       </ul>
     </section>
   )

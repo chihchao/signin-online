@@ -4,8 +4,6 @@ import { AttendanceRecordView } from './AttendanceRecordView'
 import { db } from './firebase/config'
 import {
   addCourseTeacher,
-  createCourse,
-  listMyCourses,
   removeCourseTeacher,
   updateQrExpirySeconds,
   type Course,
@@ -14,86 +12,13 @@ import { addRosterStudent, importRoster, listRoster, removeRosterStudent } from 
 import { ProjectionView } from './ProjectionView'
 import { describeError } from './errors'
 
-interface CourseManagerProps {
-  teacherEmail: string
-}
-
-export function CourseManager({ teacherEmail }: CourseManagerProps) {
-  const [courses, setCourses] = useState<Course[]>([])
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function refreshCourses() {
-    setCourses(await listMyCourses(db, teacherEmail))
-  }
-
-  useEffect(() => {
-    refreshCourses().catch((err) => setError(describeError(err)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teacherEmail])
-
-  async function handleCreateCourse(name: string) {
-    setError(null)
-    setIsCreating(true)
-    try {
-      const courseId = await createCourse(db, teacherEmail, name)
-      await refreshCourses()
-      setSelectedCourseId(courseId)
-      setIsCreateDialogOpen(false)
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setIsCreating(false)
-    }
-  }
-
-  const selectedCourse = courses.find((course) => course.id === selectedCourseId) ?? null
-
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
-        <CourseMenu
-          courses={courses}
-          onSelect={setSelectedCourseId}
-          onCreateClick={() => setIsCreateDialogOpen(true)}
-        />
-      </div>
-
-      {error && (
-        <p role="alert" className="status-message status-message--error">
-          {error}
-        </p>
-      )}
-
-      {isCreateDialogOpen && (
-        <CreateCourseDialog
-          isCreating={isCreating}
-          onCreate={handleCreateCourse}
-          onCancel={() => setIsCreateDialogOpen(false)}
-        />
-      )}
-
-      {selectedCourse && (
-        <CourseSettings
-          key={selectedCourse.id}
-          course={selectedCourse}
-          teacherEmail={teacherEmail}
-          onChanged={refreshCourses}
-        />
-      )}
-    </>
-  )
-}
-
-interface CourseMenuProps {
+export interface CourseMenuProps {
   courses: Course[]
   onSelect: (courseId: string) => void
   onCreateClick: () => void
 }
 
-function CourseMenu({ courses, onSelect, onCreateClick }: CourseMenuProps) {
+export function CourseMenu({ courses, onSelect, onCreateClick }: CourseMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -147,13 +72,13 @@ function CourseMenu({ courses, onSelect, onCreateClick }: CourseMenuProps) {
   )
 }
 
-interface CreateCourseDialogProps {
+export interface CreateCourseDialogProps {
   isCreating: boolean
   onCreate: (name: string) => void
   onCancel: () => void
 }
 
-function CreateCourseDialog({ isCreating, onCreate, onCancel }: CreateCourseDialogProps) {
+export function CreateCourseDialog({ isCreating, onCreate, onCancel }: CreateCourseDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [name, setName] = useState('')
 
@@ -188,13 +113,19 @@ function CreateCourseDialog({ isCreating, onCreate, onCancel }: CreateCourseDial
   )
 }
 
-interface CourseSettingsProps {
+export interface CourseSettingsProps {
   course: Course
   teacherEmail: string
   onChanged: () => Promise<void>
+  // Notified whenever this course enters/leaves 投影 mode, so App.tsx
+  // can hide the navbar/toolbar while it's projected on a classroom
+  // screen. Reset to false on unmount too (see the effect below) so
+  // switching courses or navigating away never leaves the chrome
+  // stuck hidden.
+  onProjectingChange: (isProjecting: boolean) => void
 }
 
-function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps) {
+export function CourseSettings({ course, teacherEmail, onChanged, onProjectingChange }: CourseSettingsProps) {
   const [newTeacherEmail, setNewTeacherEmail] = useState('')
   const [qrExpirySeconds, setQrExpirySeconds] = useState(course.qrExpirySeconds)
   const [lastSeenQrExpirySeconds, setLastSeenQrExpirySeconds] = useState(course.qrExpirySeconds)
@@ -202,6 +133,11 @@ function CourseSettings({ course, teacherEmail, onChanged }: CourseSettingsProps
   const [isProjecting, setIsProjecting] = useState(false)
   const [isManagingAttendance, setIsManagingAttendance] = useState(false)
   const [isEditingSettings, setIsEditingSettings] = useState(false)
+
+  useEffect(() => {
+    onProjectingChange(isProjecting)
+    return () => onProjectingChange(false)
+  }, [isProjecting, onProjectingChange])
 
   // Adjust local draft state when the underlying course document changes
   // (e.g. another teacher edited it), without discarding an in-progress

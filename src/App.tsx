@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { CheckinView } from './CheckinView'
-import { CourseManager } from './CourseManager'
+import { CourseMenu, CourseSettings, CreateCourseDialog } from './CourseManager'
 import { useAuthUser } from './firebase/useAuthUser'
 import { MyAttendanceView } from './MyAttendanceView'
+import { useCourseList } from './useCourseList'
 
 function readCheckinParams(): { sessionId: string; tokenId: string } | null {
   const params = new URLSearchParams(window.location.search)
@@ -15,28 +16,51 @@ function App() {
   const { user, error, signIn, signOut } = useAuthUser()
   const [checkinParams, setCheckinParams] = useState(readCheckinParams)
   const [showMyAttendance, setShowMyAttendance] = useState(false)
+  const [isProjecting, setIsProjecting] = useState(false)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+
+  const {
+    courses,
+    selectedCourse,
+    setSelectedCourseId,
+    isCreating,
+    error: courseError,
+    refreshCourses,
+    handleCreateCourse,
+  } = useCourseList(user?.email ?? '')
 
   function leaveCheckin() {
     window.history.replaceState(null, '', window.location.pathname)
     setCheckinParams(null)
   }
 
+  async function handleCreate(name: string) {
+    if (await handleCreateCourse(name)) {
+      setIsCreateDialogOpen(false)
+    }
+  }
+
   return (
     <main className="app-shell">
-      <header className="app-header">
-        <span className="app-header__brand">課堂簽到系統</span>
-        {user && (
-          <div className="app-header__right">
-            <div className="app-header__account" title={user.displayName ? `${user.displayName} ${user.email}` : user.email ?? undefined}>
-              {user.displayName && <strong>{user.displayName}</strong>}
-              <span>{user.email}</span>
+      {!isProjecting && (
+        <header className="app-header">
+          <span className="app-header__brand">課堂簽到系統</span>
+          {user && (
+            <div className="app-header__right">
+              <div
+                className="app-header__account"
+                title={user.displayName ? `${user.displayName} ${user.email}` : (user.email ?? undefined)}
+              >
+                {user.displayName && <strong>{user.displayName}</strong>}
+                <span>{user.email}</span>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => signOut()}>
+                登出
+              </button>
             </div>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => signOut()}>
-              登出
-            </button>
-          </div>
-        )}
-      </header>
+          )}
+        </header>
+      )}
 
       {user ? (
         <>
@@ -54,17 +78,60 @@ function App() {
               </>
             ) : (
               <>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowMyAttendance((current) => !current)}
-                >
-                  {showMyAttendance ? '返回課程管理' : '我的出席紀錄'}
-                </button>
+                {!isProjecting && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      width: '100%',
+                      gap: 'var(--space-2)',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setShowMyAttendance((current) => !current)}
+                    >
+                      {showMyAttendance ? '返回課程管理' : '我的出席紀錄'}
+                    </button>
+                    {!showMyAttendance && (
+                      <CourseMenu
+                        courses={courses}
+                        onSelect={setSelectedCourseId}
+                        onCreateClick={() => setIsCreateDialogOpen(true)}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {!isProjecting && courseError && !showMyAttendance && (
+                  <p role="alert" className="status-message status-message--error">
+                    {courseError}
+                  </p>
+                )}
+
+                {isCreateDialogOpen && (
+                  <CreateCourseDialog
+                    isCreating={isCreating}
+                    onCreate={handleCreate}
+                    onCancel={() => setIsCreateDialogOpen(false)}
+                  />
+                )}
+
                 {showMyAttendance ? (
                   <MyAttendanceView studentEmail={user.email} />
                 ) : (
-                  <CourseManager teacherEmail={user.email} />
+                  selectedCourse && (
+                    <CourseSettings
+                      key={selectedCourse.id}
+                      course={selectedCourse}
+                      teacherEmail={user.email}
+                      onChanged={refreshCourses}
+                      onProjectingChange={setIsProjecting}
+                    />
+                  )
                 )}
               </>
             ))}
@@ -74,7 +141,7 @@ function App() {
           使用 Google 登入
         </button>
       )}
-      {error && (
+      {!isProjecting && error && (
         <p role="alert" className="status-message status-message--error">
           登入發生問題，請再試一次。
         </p>

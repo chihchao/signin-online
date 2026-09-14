@@ -18,6 +18,7 @@ interface ProjectionViewProps {
 export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: ProjectionViewProps) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(TOKEN_REFRESH_INTERVAL_MS / 1000)
   const [error, setError] = useState<string | null>(null)
   const [isEnding, setIsEnding] = useState(false)
   const [hasEnded, setHasEnded] = useState(false)
@@ -53,6 +54,9 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
         if (!cancelled) {
           setQrDataUrl(dataUrl)
           setError(null)
+          // Reset right where the refresh actually happens, rather
+          // than reacting to qrDataUrl changing in a separate effect.
+          setSecondsUntilRefresh(TOKEN_REFRESH_INTERVAL_MS / 1000)
         }
       } catch (err) {
         if (!cancelled) setError(describeError(err))
@@ -66,6 +70,19 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
       cancelled = true
       clearInterval(intervalId)
     }
+  }, [sessionId, hasEnded])
+
+  // Ticks the visible countdown every second while a session is live —
+  // the actual reset-to-15 happens above, next to the refresh it's
+  // counting down to.
+  useEffect(() => {
+    if (!sessionId || hasEnded) return
+
+    const tickId = setInterval(() => {
+      setSecondsUntilRefresh((seconds) => Math.max(0, seconds - 1))
+    }, 1000)
+
+    return () => clearInterval(tickId)
   }, [sessionId, hasEnded])
 
   async function handleEndSession() {
@@ -91,7 +108,7 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
 
   return (
     <section className="card">
-      <h3>{courseName} — 投影頁</h3>
+      <h3>{courseName} — 簽到</h3>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isEnding}>
@@ -124,6 +141,7 @@ export function ProjectionView({ courseId, courseName, teacherEmail, onClose }: 
         qrDataUrl && (
           <div className="qr-frame">
             <img src={qrDataUrl} alt="簽到 QR Code" />
+            <p className="qr-countdown">{secondsUntilRefresh} 秒後更新</p>
           </div>
         )
       )}

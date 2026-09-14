@@ -333,6 +333,50 @@ button {
   outline-offset: 2px;
 }
 
+/* Accordion (e.g. 我的出席紀錄, grouped by course) */
+
+.accordion-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.accordion-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: none;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--color-foreground);
+  text-align: left;
+  transition: background-color 150ms ease;
+}
+
+.accordion-trigger:hover {
+  background: var(--color-muted);
+}
+
+.accordion-trigger:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: -2px;
+}
+
+.accordion-icon {
+  color: var(--color-muted-foreground);
+  font-weight: 700;
+}
+
+.accordion-panel {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-muted);
+  border-top: 1px solid var(--color-border);
+}
+
 /* Badges */
 
 .badge {
@@ -397,7 +441,9 @@ tbody tr:hover {
    reliably, so this isn't themed like the rest of the UI. */
 .qr-frame {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-5);
   background: #ffffff;
   border: 1px solid var(--color-border);
@@ -407,8 +453,17 @@ tbody tr:hover {
 .qr-frame img {
   display: block;
   width: 100%;
-  max-width: 320px;
+  max-width: 480px;
   height: auto;
+}
+
+.qr-countdown {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  /* Always readable against the QR frame's fixed white background,
+     regardless of theme. */
+  color: #334155;
 }
 
 /* Status messages */
