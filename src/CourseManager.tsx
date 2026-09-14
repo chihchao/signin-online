@@ -285,10 +285,10 @@ export function CourseSettings({ course, teacherEmail, onChanged, onProjectingCh
           開始點名
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => setIsManagingAttendance(true)}>
-          管理出席紀錄
+          出席紀錄
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => setIsEditingSettings(true)}>
-          設定
+          課程設定
         </button>
       </div>
 

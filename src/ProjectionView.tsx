@@ -1,6 +1,5 @@
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
-import { AttendanceRecordView } from './AttendanceRecordView'
 import { buildCheckinUrl } from './checkinUrl'
 import { describeError } from './errors'
 import { db } from './firebase/config'
@@ -28,7 +27,6 @@ export function ProjectionView({ courseId, courseName, teacherEmail, qrExpirySec
   const [error, setError] = useState<string | null>(null)
   const [isEnding, setIsEnding] = useState(false)
   const [hasEnded, setHasEnded] = useState(false)
-  const [isManagingAttendance, setIsManagingAttendance] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -108,31 +106,19 @@ export function ProjectionView({ courseId, courseName, teacherEmail, qrExpirySec
     }
   }
 
-  if (isManagingAttendance) {
-    return <AttendanceRecordView courseId={courseId} onClose={() => setIsManagingAttendance(false)} />
-  }
-
   return (
     <section className="card">
       <h3>{courseName} — 簽到</h3>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isEnding}>
-          關閉投影頁
+          關閉簽到
         </button>
         {!hasEnded && (
           <button type="button" className="btn btn-secondary" onClick={handleEndSession} disabled={!sessionId || isEnding}>
             {isEnding ? '結束中…' : '結束點名'}
           </button>
         )}
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => setIsManagingAttendance(true)}
-          disabled={!sessionId || isEnding}
-        >
-          管理出席紀錄
-        </button>
       </div>
 
       {error && (

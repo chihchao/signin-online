@@ -84,7 +84,7 @@ function App() {
                     style={{
                       display: 'flex',
                       flexWrap: 'wrap',
-                      justifyContent: 'space-between',
+                      justifyContent: !showMyAttendance && isTeacher ? 'space-between' : 'center',
                       alignItems: 'center',
                       width: '100%',
                       gap: 'var(--space-2)',
@@ -95,7 +95,7 @@ function App() {
                       className="btn btn-secondary"
                       onClick={() => setShowMyAttendance((current) => !current)}
                     >
-                      {showMyAttendance ? '返回課程管理' : '我的出席紀錄'}
+                      {showMyAttendance ? '返回個人頁面' : '我的出席紀錄'}
                     </button>
                     {!showMyAttendance && isTeacher && (
                       <CourseMenu
