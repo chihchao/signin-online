@@ -467,69 +467,52 @@ function RosterManager({ courseId }: RosterManagerProps) {
     <div className="panel">
       <h4>選課名單</h4>
 
-      {!isManaging ? (
-        <button type="button" className="btn btn-secondary" onClick={() => setIsManaging(true)}>
-          管理名單（{roster.length} 位學生）
-        </button>
-      ) : (
-        <>
-          <button type="button" className="btn btn-secondary" onClick={() => setIsManaging(false)}>
-            收合
-          </button>
+      <button type="button" className="btn btn-secondary" onClick={() => setIsManaging(true)}>
+        管理名單（{roster.length} 位學生）
+      </button>
 
-          <ul className="list list--scroll">
-            {roster.map((entry) => (
-              <li key={entry.email} className="list-item">
-                <span>
-                  {entry.name ? `${entry.name}（${entry.email}）` : entry.email}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-destructive btn-sm"
-                  onClick={() => handleRemoveStudent(entry.email)}
-                >
-                  移除
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          <form onSubmit={handleAddStudent}>
-            <label>
-              新增學生 email
-              <input
-                value={newStudentEmail}
-                onChange={(event) => setNewStudentEmail(event.target.value)}
-              />
-            </label>
-            <label>
-              學生姓名
-              <input
-                value={newStudentName}
-                onChange={(event) => setNewStudentName(event.target.value)}
-              />
-            </label>
-            <button type="submit" className="btn btn-primary">
-              新增
-            </button>
-          </form>
-
-          <form onSubmit={handleImport}>
-            <label>
-              貼上選課名單（每行「email,姓名」）
-              <textarea
-                rows={4}
-                placeholder={'student1@example.com,王小明\nstudent2@example.com,陳小華'}
-                value={pasteText}
-                onChange={(event) => setPasteText(event.target.value)}
-              />
-            </label>
-            <button type="submit" className="btn btn-primary">
-              批次匯入
-            </button>
-          </form>
-        </>
+      {isManaging && (
+        <RosterListDialog
+          roster={roster}
+          onRemove={handleRemoveStudent}
+          onClose={() => setIsManaging(false)}
+        />
       )}
+
+      <form onSubmit={handleAddStudent}>
+        <label>
+          新增學生 email
+          <input
+            value={newStudentEmail}
+            onChange={(event) => setNewStudentEmail(event.target.value)}
+          />
+        </label>
+        <label>
+          學生姓名
+          <input
+            value={newStudentName}
+            onChange={(event) => setNewStudentName(event.target.value)}
+          />
+        </label>
+        <button type="submit" className="btn btn-primary">
+          新增
+        </button>
+      </form>
+
+      <form onSubmit={handleImport}>
+        <label>
+          貼上選課名單（每行「email,姓名」）
+          <textarea
+            rows={4}
+            placeholder={'student1@example.com,王小明\nstudent2@example.com,陳小華'}
+            value={pasteText}
+            onChange={(event) => setPasteText(event.target.value)}
+          />
+        </label>
+        <button type="submit" className="btn btn-primary">
+          批次匯入
+        </button>
+      </form>
 
       {error && (
         <p role="alert" className="status-message status-message--error">
@@ -537,5 +520,41 @@ function RosterManager({ courseId }: RosterManagerProps) {
         </p>
       )}
     </div>
+  )
+}
+
+interface RosterListDialogProps {
+  roster: { email: string; name: string }[]
+  onRemove: (email: string) => void
+  onClose: () => void
+}
+
+// 新增學生/批次匯入 deliberately stay in the panel behind this dialog,
+// not inside it — this only handles viewing/removing the existing
+// list.
+function RosterListDialog({ roster, onRemove, onClose }: RosterListDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    dialogRef.current?.showModal()
+  }, [])
+
+  return (
+    <dialog ref={dialogRef} className="dialog" onClose={onClose}>
+      <h3>選課名單</h3>
+      <ul className="list list--scroll">
+        {roster.map((entry) => (
+          <li key={entry.email} className="list-item">
+            <span>{entry.name ? `${entry.name}（${entry.email}）` : entry.email}</span>
+            <button type="button" className="btn btn-destructive btn-sm" onClick={() => onRemove(entry.email)}>
+              移除
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="btn btn-secondary" onClick={() => dialogRef.current?.close()}>
+        關閉
+      </button>
+    </dialog>
   )
 }
