@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { statusLabel } from './attendanceStatusLabels'
+import { orderedStatusOptions, statusLabel } from './attendanceStatusLabels'
 import { formatDate } from './dateFormat'
 import { describeError } from './errors'
 import {
@@ -8,6 +8,7 @@ import {
   type AttendanceImportLineError,
 } from './firebase/attendanceImportService'
 import { db } from './firebase/config'
+import { isPermissionDeniedError } from './firebase/errors'
 
 interface AttendanceImportViewProps {
   courseId: string
@@ -35,7 +36,7 @@ export function AttendanceImportView({ courseId, teacherEmail, customStatuses }:
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const statusOptionsText = [statusLabel('present'), ...customStatuses, statusLabel('absent')].join('、')
+  const statusOptionsText = orderedStatusOptions(customStatuses).map(statusLabel).join('、')
 
   async function handleImport(event: React.FormEvent) {
     event.preventDefault()
@@ -51,6 +52,8 @@ export function AttendanceImportView({ courseId, teacherEmail, customStatuses }:
     } catch (err) {
       if (err instanceof AttendanceImportValidationError) {
         setLineErrors(err.lineErrors)
+      } else if (isPermissionDeniedError(err)) {
+        setError('你可能不是這門課的老師，或選擇的日期／狀態被系統拒絕，請確認後再試一次')
       } else {
         setError(describeError(err))
       }
