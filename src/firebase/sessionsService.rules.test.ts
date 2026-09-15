@@ -18,7 +18,7 @@ import {
 import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { submitAttendance } from './attendanceService'
-import { createToken, endSession, listSessionsForCourse, startOrResumeSession } from './sessionsService'
+import { createImportSession, createToken, endSession, listSessionsForCourse, startOrResumeSession } from './sessionsService'
 
 const TEACHER = 'teacher@example.com'
 const OTHER_TEACHER = 'other-teacher@example.com'
@@ -115,6 +115,52 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
     const sessionId = await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
 
     await assertFails(createToken(dbAs(OTHER_TEACHER), sessionId))
+  })
+
+  describe('createImportSession (補登指定日期)', () => {
+    it('creates an already-ended session backdated to the given date', async () => {
+      await seedCourse('course-1', [TEACHER])
+      const teacherDb = dbAs(TEACHER)
+      const date = new Date('2026-01-05T12:00:00')
+
+      const sessionId = await assertSucceeds(createImportSession(teacherDb, 'course-1', TEACHER, date))
+
+      const sessionSnap = await getDoc(doc(teacherDb, 'sessions', sessionId))
+      expect(sessionSnap.data()?.createdAt.toDate()).toEqual(date)
+      expect(sessionSnap.data()?.endedAt.toDate()).toEqual(date)
+      expect(sessionSnap.data()?.createdBy).toBe(TEACHER)
+    })
+
+    it('denies a non-course-teacher from creating an import session', async () => {
+      await seedCourse('course-1', [TEACHER])
+
+      await assertFails(
+        createImportSession(dbAs(OTHER_TEACHER), 'course-1', OTHER_TEACHER, new Date('2026-01-05T12:00:00')),
+      )
+    })
+
+    it('denies backdating to a future date', async () => {
+      await seedCourse('course-1', [TEACHER])
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000)
+
+      await assertFails(createImportSession(dbAs(TEACHER), 'course-1', TEACHER, future))
+    })
+
+    it("never touches the activeSessions pointer used by 開始點名 (doesn't get resumed, doesn't steal the live session's slot)", async () => {
+      await seedCourse('course-1', [TEACHER])
+      const teacherDb = dbAs(TEACHER)
+      const liveSessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+
+      const importSessionId = await createImportSession(
+        teacherDb,
+        'course-1',
+        TEACHER,
+        new Date('2026-01-05T12:00:00'),
+      )
+
+      expect(importSessionId).not.toBe(liveSessionId)
+      await expect(startOrResumeSession(teacherDb, 'course-1', TEACHER)).resolves.toBe(liveSessionId)
+    })
   })
 
   describe('listSessionsForCourse', () => {

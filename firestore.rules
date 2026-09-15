@@ -121,11 +121,27 @@ service cloud.firestore {
       allow read, write: if isTeacherOfCourse(courseId);
     }
 
+    function isValidLiveSessionCreate() {
+      return request.resource.data.createdAt == request.time &&
+        request.resource.data.endedAt == null;
+    }
+
+    // 匯入點名記錄 (補登): a teacher backfilling a past day's attendance
+    // creates a session that's pre-dated and already ended, instead of
+    // the live "開始點名" flow's request.time/null pair. createdAt may
+    // be any timestamp no later than now (never a future date — this
+    // only backfills the past) and endedAt must equal createdAt exactly
+    // (no "created but still open" state for an import session).
+    function isValidImportSessionCreate() {
+      return request.resource.data.createdAt is timestamp &&
+        request.resource.data.createdAt <= request.time &&
+        request.resource.data.endedAt == request.resource.data.createdAt;
+    }
+
     match /sessions/{sessionId} {
       allow create: if isTeacherOfCourse(request.resource.data.courseId) &&
         request.resource.data.createdBy == request.auth.token.email &&
-        request.resource.data.createdAt == request.time &&
-        request.resource.data.endedAt == null;
+        (isValidLiveSessionCreate() || isValidImportSessionCreate());
       // Listing (querying) sessions stays teacher-only. A course's
       // teacher or an enrolled student may fetch one session by its
       // exact id — needed by the student check-in flow to read

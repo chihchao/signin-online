@@ -8,6 +8,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   type Timestamp,
   updateDoc,
   where,
@@ -59,6 +60,29 @@ export async function startOrResumeSession(
     transaction.set(pointerRef, { sessionId: newSessionRef.id })
     return newSessionRef.id
   })
+}
+
+// 匯入點名記錄 (補登): unlike startOrResumeSession, always creates a
+// brand-new session — an import never merges into or resumes an
+// existing one — pre-dated to `date` and immediately marked ended,
+// since it only exists to carry backfilled records rather than a live
+// 點名 activity. Bypasses the activeSessions/{courseId} pointer
+// entirely: an import session must never be something 開始點名 resumes
+// or endSession ends again.
+export async function createImportSession(
+  db: Firestore,
+  courseId: string,
+  teacherEmail: string,
+  date: Date,
+): Promise<string> {
+  const sessionRef = doc(collection(db, 'sessions'))
+  await setDoc(sessionRef, {
+    courseId,
+    createdBy: teacherEmail,
+    createdAt: date,
+    endedAt: date,
+  })
+  return sessionRef.id
 }
 
 export interface SessionSummary {
