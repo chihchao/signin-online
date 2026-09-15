@@ -128,13 +128,16 @@ service cloud.firestore {
 
     // 匯入點名記錄 (補登): a teacher backfilling a past day's attendance
     // creates a session that's pre-dated and already ended, instead of
-    // the live "開始點名" flow's request.time/null pair. createdAt may
-    // be any timestamp no later than now (never a future date — this
-    // only backfills the past) and endedAt must equal createdAt exactly
-    // (no "created but still open" state for an import session).
+    // the live "開始點名" flow's request.time/null pair. createdAt is
+    // set to noon local time on the chosen date, so a same-day import
+    // submitted before noon would otherwise send a createdAt ahead of
+    // request.time and be denied — the 1-day tolerance below allows
+    // that while still rejecting a genuinely future date (tomorrow or
+    // later). endedAt must equal createdAt exactly (no "created but
+    // still open" state for an import session).
     function isValidImportSessionCreate() {
       return request.resource.data.createdAt is timestamp &&
-        request.resource.data.createdAt <= request.time &&
+        request.resource.data.createdAt <= request.time + duration.value(1, 'd') &&
         request.resource.data.endedAt == request.resource.data.createdAt;
     }
 

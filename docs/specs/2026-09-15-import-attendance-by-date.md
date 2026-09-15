@@ -100,7 +100,7 @@ function isValidLiveSessionCreate() {
 
 function isValidImportSessionCreate() {
   return request.resource.data.createdAt is timestamp &&
-    request.resource.data.createdAt <= request.time &&
+    request.resource.data.createdAt <= request.time + duration.value(1, 'd') &&
     request.resource.data.endedAt == request.resource.data.createdAt;
 }
 
@@ -112,7 +112,9 @@ match /sessions/{sessionId} {
 }
 ```
 
-`isValidImportSessionCreate()` 允許 `createdAt` 是任何「不晚於現在」的時間戳記（不能是未來，呼應「只能補登過去」的功能定位），且要求 `endedAt` 必須等於 `createdAt`（不能留下一個「進行中但日期是過去」的怪狀態）。
+`isValidImportSessionCreate()` 允許 `createdAt` 不晚於「現在 + 1 天」的時間戳記，且要求 `endedAt` 必須等於 `createdAt`（不能留下一個「進行中但日期是過去」的怪狀態）。
+
+這個 1 天容許值是最終審查時抓到的實際 bug 修正，不是預防性設計：`attendanceImportService.ts` 把匯入 session 的 `createdAt` 固定設成所選日期「當天中午 12:00」；若教師回填的是**今天**、且在中午 12:00 之前送出匯入（例如上午 10 點的課、10:30 補登），送出的 `createdAt` 會比 `request.time` 還晚，若規則只允許 `createdAt <= request.time`，這個「回填當天」的核心情境反而會被 Firestore 規則擋下、丟出教師看不懂的權限錯誤。加上 1 天的容許值後，「今天中午 12:00」無論教師實際是在當天的哪個時間點送出都一定能通過，同時仍然會擋下真正的未來日期（明天以後）。
 
 其餘 `sessions` 的規則（`update`／`delete`／`tokens` 子集合）**不需要修改**——`update` 規則要求 `resource.data.endedAt == null` 才能結束，匯入建立的 session 一開始 `endedAt` 就非 null，天生無法被 `endSession()` 二次結束，符合預期（它本來就不該被當成一個可以再操作的 session）。
 

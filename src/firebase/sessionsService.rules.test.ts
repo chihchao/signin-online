@@ -141,9 +141,16 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
 
     it('denies backdating to a future date', async () => {
       await seedCourse('course-1', [TEACHER])
-      const future = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      const future = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
 
       await assertFails(createImportSession(dbAs(TEACHER), 'course-1', TEACHER, future))
+    })
+
+    it('allows a createdAt a few hours ahead of now (noon today, submitted before noon)', async () => {
+      await seedCourse('course-1', [TEACHER])
+      const laterToday = new Date(Date.now() + 6 * 60 * 60 * 1000)
+
+      await assertSucceeds(createImportSession(dbAs(TEACHER), 'course-1', TEACHER, laterToday))
     })
 
     it("never touches the activeSessions pointer used by 開始點名 (doesn't get resumed, doesn't steal the live session's slot)", async () => {

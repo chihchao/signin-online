@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { statusLabel } from './attendanceStatusLabels'
+import { formatDate } from './dateFormat'
 import { describeError } from './errors'
 import {
   AttendanceImportValidationError,
@@ -26,7 +27,7 @@ interface ImportSummary {
 }
 
 export function AttendanceImportView({ courseId, teacherEmail, customStatuses }: AttendanceImportViewProps) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = formatDate(new Date())
   const [date, setDate] = useState(today)
   const [pasteText, setPasteText] = useState('')
   const [isImporting, setIsImporting] = useState(false)
@@ -68,7 +69,7 @@ export function AttendanceImportView({ courseId, teacherEmail, customStatuses }:
       <form onSubmit={handleImport}>
         <label>
           日期
-          <input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} />
+          <input type="date" value={date} max={today} required onChange={(event) => setDate(event.target.value)} />
         </label>
         <label>
           貼上點名記錄（每行「email,狀態」）
