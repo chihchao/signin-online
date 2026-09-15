@@ -1,6 +1,9 @@
+import { doc, type Firestore, writeBatch } from 'firebase/firestore'
 import { statusLabel } from '../attendanceStatusLabels'
 import { normalizeEmail } from '../email'
-import { isValidEmail } from './rosterService'
+import { attendanceDocId } from './attendanceDocId'
+import { isValidEmail, listRoster } from './rosterService'
+import { createImportSession } from './sessionsService'
 
 export interface AttendanceImportLineError {
   lineNumber: number
@@ -91,4 +94,74 @@ export function parseAttendanceImportText(
     return { ok: false, errors }
   }
   return { ok: true, entries }
+}
+
+export class AttendanceImportValidationError extends Error {
+  readonly lineErrors: AttendanceImportLineError[]
+
+  constructor(lineErrors: AttendanceImportLineError[]) {
+    super('匯入內容有格式或狀態錯誤，尚未寫入任何記錄')
+    this.name = 'AttendanceImportValidationError'
+    this.lineErrors = lineErrors
+  }
+}
+
+export interface ImportAttendanceResult {
+  writtenCount: number
+  skippedNotInRoster: string[]
+  sessionId: string | null
+}
+
+const FIRESTORE_BATCH_LIMIT = 500
+
+// 匯入點名記錄 (補登): validates the whole paste first (parseAttendanceImportText)
+// and throws AttendanceImportValidationError without writing anything if
+// any line has a hard error. Otherwise looks up the roster, skips lines
+// with no matching student (reported, not fatal), and — only if at
+// least one line will be written — creates a single new backdated,
+// pre-ended session (createImportSession) to hold every record from
+// this import.
+export async function importAttendanceForDate(
+  db: Firestore,
+  courseId: string,
+  teacherEmail: string,
+  customStatuses: string[],
+  dateStr: string,
+  text: string,
+): Promise<ImportAttendanceResult> {
+  const parseResult = parseAttendanceImportText(text, customStatuses)
+  if (!parseResult.ok) {
+    throw new AttendanceImportValidationError(parseResult.errors)
+  }
+
+  const roster = await listRoster(db, courseId)
+  const rosterEmails = new Set(roster.map((entry) => entry.email))
+
+  const toWrite = parseResult.entries.filter((entry) => rosterEmails.has(entry.email))
+  const skippedNotInRoster = parseResult.entries
+    .filter((entry) => !rosterEmails.has(entry.email))
+    .map((entry) => entry.email)
+
+  if (toWrite.length === 0) {
+    return { writtenCount: 0, skippedNotInRoster, sessionId: null }
+  }
+
+  const date = new Date(`${dateStr}T12:00:00`)
+  const sessionId = await createImportSession(db, courseId, teacherEmail, date)
+
+  for (let start = 0; start < toWrite.length; start += FIRESTORE_BATCH_LIMIT) {
+    const batch = writeBatch(db)
+    for (const entry of toWrite.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+      batch.set(doc(db, 'attendance', attendanceDocId(sessionId, entry.email)), {
+        sessionId,
+        courseId,
+        studentEmail: entry.email,
+        status: entry.status,
+        timestamp: date,
+      })
+    }
+    await batch.commit()
+  }
+
+  return { writtenCount: toWrite.length, skippedNotInRoster, sessionId }
 }
