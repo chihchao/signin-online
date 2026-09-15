@@ -1,4 +1,4 @@
-import { doc, type Firestore, writeBatch } from 'firebase/firestore'
+import { collection, deleteDoc, doc, type Firestore, getDocs, query, where, writeBatch } from 'firebase/firestore'
 import { statusLabel } from '../attendanceStatusLabels'
 import { normalizeEmail } from '../email'
 import { attendanceDocId } from './attendanceDocId'
@@ -114,6 +114,37 @@ export interface ImportAttendanceResult {
 
 const FIRESTORE_BATCH_LIMIT = 500
 
+// Best-effort cleanup after a batch write fails partway through: deletes
+// whatever attendance records did make it in for this session (earlier
+// batches, if this wasn't the first) plus the session doc itself, so a
+// denied write never leaves an orphan session with no records — the same
+// "no session unless something is actually written" guarantee
+// importAttendanceForDate already gives the all-skipped case. Swallows
+// its own errors so the *original* write failure is what the caller sees,
+// not a masking cleanup failure.
+async function rollbackImportSession(db: Firestore, courseId: string, sessionId: string): Promise<void> {
+  try {
+    // courseId must be equality-filtered alongside sessionId — same
+    // requirement as listAttendanceForSession/endSession — for Firestore
+    // to prove the attendance `list` rule (isTeacherOfCourse(resource.data.courseId))
+    // without reading every attendance document in the collection.
+    const writtenSnap = await getDocs(
+      query(collection(db, 'attendance'), where('courseId', '==', courseId), where('sessionId', '==', sessionId)),
+    )
+    for (let start = 0; start < writtenSnap.docs.length; start += FIRESTORE_BATCH_LIMIT) {
+      const batch = writeBatch(db)
+      for (const docSnapshot of writtenSnap.docs.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+        batch.delete(docSnapshot.ref)
+      }
+      await batch.commit()
+    }
+    await deleteDoc(doc(db, 'sessions', sessionId))
+  } catch {
+    // Best-effort: an orphaned session is a lesser problem than hiding
+    // the write failure that caused it.
+  }
+}
+
 // 匯入點名記錄 (補登): validates the whole paste first (parseAttendanceImportText)
 // and throws AttendanceImportValidationError without writing anything if
 // any line has a hard error. Otherwise looks up the roster, skips lines
@@ -149,18 +180,23 @@ export async function importAttendanceForDate(
   const date = new Date(`${dateStr}T12:00:00`)
   const sessionId = await createImportSession(db, courseId, teacherEmail, date)
 
-  for (let start = 0; start < toWrite.length; start += FIRESTORE_BATCH_LIMIT) {
-    const batch = writeBatch(db)
-    for (const entry of toWrite.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
-      batch.set(doc(db, 'attendance', attendanceDocId(sessionId, entry.email)), {
-        sessionId,
-        courseId,
-        studentEmail: entry.email,
-        status: entry.status,
-        timestamp: date,
-      })
+  try {
+    for (let start = 0; start < toWrite.length; start += FIRESTORE_BATCH_LIMIT) {
+      const batch = writeBatch(db)
+      for (const entry of toWrite.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+        batch.set(doc(db, 'attendance', attendanceDocId(sessionId, entry.email)), {
+          sessionId,
+          courseId,
+          studentEmail: entry.email,
+          status: entry.status,
+          timestamp: date,
+        })
+      }
+      await batch.commit()
     }
-    await batch.commit()
+  } catch (err) {
+    await rollbackImportSession(db, courseId, sessionId)
+    throw err
   }
 
   return { writtenCount: toWrite.length, skippedNotInRoster, sessionId }

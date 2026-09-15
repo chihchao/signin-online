@@ -148,6 +148,33 @@ describe('importAttendanceForDate (against Firestore rules via emulator)', () =>
     await expect(listSessionsForCourse(dbAs(TEACHER), 'course-1')).resolves.toEqual([])
   })
 
+  it('rolls back (deletes) the session it just created when the attendance write is denied, leaving no orphan', async () => {
+    // Simulates a stale client: the course's *actual* customStatuses no
+    // longer include '請假' (e.g. a teacher removed it from 課程設定
+    // between page load and import), so parseAttendanceImportText — using
+    // the caller-supplied customStatuses — accepts it, but the Firestore
+    // rules check against the real course document and deny the write.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore
+      await setDoc(doc(db, 'courses', 'course-1'), {
+        name: '測試課程',
+        teacherEmails: [TEACHER],
+        qrExpirySeconds: 25,
+        customStatuses: [],
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        createdBy: TEACHER,
+      })
+    })
+    await seedRoster('course-1', STUDENT_A)
+
+    await expect(
+      importAttendanceForDate(dbAs(TEACHER), 'course-1', TEACHER, CUSTOM_STATUSES, DATE, `${STUDENT_A},請假`),
+    ).rejects.toThrow()
+
+    expect(await attendanceForCourse('course-1')).toEqual([])
+    await expect(listSessionsForCourse(dbAs(TEACHER), 'course-1')).resolves.toEqual([])
+  })
+
   it('denies a non-course-teacher from importing', async () => {
     await seedCourse('course-1', [TEACHER])
     await seedRoster('course-1', STUDENT_A)
