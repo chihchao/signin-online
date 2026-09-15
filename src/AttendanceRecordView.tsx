@@ -27,7 +27,9 @@ interface AttendanceRecordViewProps {
 
 function sessionLabel(session: SessionSummary): string {
   const date = formatDate(session.createdAt)
-  return session.endedAt === null ? `${date}（進行中）` : date
+  if (session.endedAt === null) return `${date}（進行中）`
+  if (session.source === 'import') return `${date}（補登）`
+  return date
 }
 
 // Owns its own session list (rather than taking a sessionId prop) so

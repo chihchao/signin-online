@@ -121,9 +121,15 @@ service cloud.firestore {
       allow read, write: if isTeacherOfCourse(courseId);
     }
 
+    // `source` distinguishes a live "開始點名" session from a 匯入
+    // (補登) one — otherwise indistinguishable in the session history
+    // once both have an endedAt, since an import session is also
+    // created already-ended. Required and exact-matched per shape below
+    // so it can't be forged into the other shape's meaning.
     function isValidLiveSessionCreate() {
       return request.resource.data.createdAt == request.time &&
-        request.resource.data.endedAt == null;
+        request.resource.data.endedAt == null &&
+        request.resource.data.source == 'live';
     }
 
     // 匯入點名記錄 (補登): a teacher backfilling a past day's attendance
@@ -138,7 +144,8 @@ service cloud.firestore {
     function isValidImportSessionCreate() {
       return request.resource.data.createdAt is timestamp &&
         request.resource.data.createdAt <= request.time + duration.value(1, 'd') &&
-        request.resource.data.endedAt == request.resource.data.createdAt;
+        request.resource.data.endedAt == request.resource.data.createdAt &&
+        request.resource.data.source == 'import';
     }
 
     match /sessions/{sessionId} {
@@ -164,7 +171,8 @@ service cloud.firestore {
         request.resource.data.courseId == resource.data.courseId &&
         request.resource.data.createdBy == resource.data.createdBy &&
         request.resource.data.createdAt == resource.data.createdAt &&
-        request.resource.data.keys().hasOnly(['courseId', 'createdBy', 'createdAt', 'endedAt']);
+        request.resource.data.get('source', 'live') == resource.data.get('source', 'live') &&
+        request.resource.data.keys().hasOnly(['courseId', 'createdBy', 'createdAt', 'endedAt', 'source']);
       // 刪除課程 (deleteCourse) deletes every session belonging to it —
       // done while the course document still exists, so this can still
       // prove isTeacherOfCourse.

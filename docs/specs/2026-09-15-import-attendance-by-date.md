@@ -50,6 +50,7 @@
 - `session.createdAt` = 老師選的日期 + 固定時間 **12:00（當地時間中午）**。選中午而不是 00:00，是為了避免時區轉換（Firestore 以 UTC 存 Timestamp，前端用本地時區顯示）把日期誤判成前一天或跨日界線。
 - `session.endedAt` = 與 `createdAt` 相同的值（建立當下就視為已結束）。這支 session 不會以「進行中」的樣子出現在其他畫面（例如 QR 投影頁面、目前點名活動列表），也不會被 `endSession()` 的自動缺席邏輯或任何「恢復進行中 session」的邏輯碰到。
 - `session.createdBy` = 執行匯入的老師 email。
+- `session.source` = `'import'`（即時「開始點名」建立的 session 則是 `'live'`）。因為匯入的 session 建立時就已經是 `endedAt` 非 null 的狀態，跟一支「已經結束的即時點名」在資料形狀上會完全一樣，光看 `createdAt`/`endedAt` 沒辦法分辨兩者；`source` 讓 `出席紀錄` 畫面的 session 下拉選單可以把同一天的「補登」跟「即時點名」標示清楚（例如「2026-01-05（補登）」）。這個欄位是這次才新增的，舊資料沒有這個欄位，讀取時一律預設成 `'live'`（在此之前系統只有即時點名一種 session）。
 - 匯入 session 建立時**不**經過 `activeSessions/{courseId}` pointer（那個 pointer 只給「開始點名／恢復點名」用），避免污染即時點名的恢復邏輯。
 - 建立 session 之後，寫入點名記錄的批次若失敗（例如前端手上的狀態選項跟課程實際的 `customStatuses` 不同步，導致 Firestore 規則拒絕某筆狀態），會自動刪除已經建立的 session、以及這次匯入已經成功寫入的任何點名記錄，讓失敗的匯入不會留下「查無記錄的孤兒 session」——維持跟「全部跳過就不建立 session」一致的保證：一個 session 存在，就代表它底下至少有一筆有效記錄。此清理是 best-effort：清理本身若又失敗，會吞掉清理的錯誤，讓老師看到的還是原始的寫入失敗原因，而不是被清理失敗蓋掉。
 

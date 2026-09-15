@@ -129,6 +129,33 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
       expect(sessionSnap.data()?.createdAt.toDate()).toEqual(date)
       expect(sessionSnap.data()?.endedAt.toDate()).toEqual(date)
       expect(sessionSnap.data()?.createdBy).toBe(TEACHER)
+      expect(sessionSnap.data()?.source).toBe('import')
+    })
+
+    it('denies a raw create whose source is missing or does not match its own shape', async () => {
+      await seedCourse('course-1', [TEACHER])
+      const teacherDb = dbAs(TEACHER)
+      const date = new Date('2026-01-05T12:00:00')
+
+      // Import-shaped data (backdated, pre-ended) but claiming 'live'.
+      await assertFails(
+        setDoc(doc(collection(teacherDb, 'sessions')), {
+          courseId: 'course-1',
+          createdBy: TEACHER,
+          createdAt: date,
+          endedAt: date,
+          source: 'live',
+        }),
+      )
+      // Import-shaped data with no source at all.
+      await assertFails(
+        setDoc(doc(collection(teacherDb, 'sessions')), {
+          courseId: 'course-1',
+          createdBy: TEACHER,
+          createdAt: date,
+          endedAt: date,
+        }),
+      )
     })
 
     it('denies a non-course-teacher from creating an import session', async () => {
@@ -196,6 +223,35 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
       await startOrResumeSession(dbAs(TEACHER), 'course-1', TEACHER)
 
       await assertFails(listSessionsForCourse(dbAs(OTHER_TEACHER), 'course-1'))
+    })
+
+    it("reports 'live' for a 開始點名 session and 'import' for a 補登 session, so the two are distinguishable", async () => {
+      await seedCourse('course-1', [TEACHER])
+      const teacherDb = dbAs(TEACHER)
+      const liveSessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+      const importSessionId = await createImportSession(teacherDb, 'course-1', TEACHER, new Date('2026-01-05T12:00:00'))
+
+      const sessions = await listSessionsForCourse(teacherDb, 'course-1')
+
+      const byId = Object.fromEntries(sessions.map((session) => [session.id, session.source]))
+      expect(byId).toEqual({ [liveSessionId]: 'live', [importSessionId]: 'import' })
+    })
+
+    it("defaults a session predating the source field to 'live'", async () => {
+      await seedCourse('course-1', [TEACHER])
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        await setDoc(doc(db, 'sessions', 'legacy-session'), {
+          courseId: 'course-1',
+          createdBy: TEACHER,
+          createdAt: new Date('2025-01-01T12:00:00'),
+          endedAt: new Date('2025-01-01T13:00:00'),
+        })
+      })
+
+      const sessions = await listSessionsForCourse(dbAs(TEACHER), 'course-1')
+
+      expect(sessions).toEqual([expect.objectContaining({ id: 'legacy-session', source: 'live' })])
     })
   })
 

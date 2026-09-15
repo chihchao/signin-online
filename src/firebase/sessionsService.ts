@@ -56,6 +56,7 @@ export async function startOrResumeSession(
       createdBy: teacherEmail,
       createdAt: serverTimestamp(),
       endedAt: null,
+      source: 'live',
     })
     transaction.set(pointerRef, { sessionId: newSessionRef.id })
     return newSessionRef.id
@@ -81,6 +82,7 @@ export async function createImportSession(
     createdBy: teacherEmail,
     createdAt: date,
     endedAt: date,
+    source: 'import',
   })
   return sessionRef.id
 }
@@ -89,6 +91,9 @@ export interface SessionSummary {
   id: string
   createdAt: Date | null
   endedAt: Date | null
+  // Absent on a session created before this field existed — treated as
+  // 'live' since every session predating 匯入點名記錄 was one.
+  source: 'live' | 'import'
 }
 
 // Every past 點名 for this course (not just the current one), newest
@@ -105,6 +110,7 @@ export async function listSessionsForCourse(db: Firestore, courseId: string): Pr
         id: docSnapshot.id,
         createdAt: (data.createdAt as Timestamp | null)?.toDate() ?? null,
         endedAt: (data.endedAt as Timestamp | null)?.toDate() ?? null,
+        source: (data.source as 'live' | 'import' | undefined) ?? 'live',
       }
     })
     .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
