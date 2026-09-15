@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AttendanceExportView } from './AttendanceExportView'
+import { AttendanceImportView } from './AttendanceImportView'
 import { AttendanceRecordView } from './AttendanceRecordView'
 import { db } from './firebase/config'
 import {
@@ -317,6 +318,11 @@ export function CourseSettings({
           />
 
           <RosterManager courseId={course.id} />
+          <AttendanceImportView
+            courseId={course.id}
+            teacherEmail={teacherEmail}
+            customStatuses={course.customStatuses ?? DEFAULT_CUSTOM_STATUSES}
+          />
           <AttendanceExportView courseId={course.id} courseName={course.name} />
 
           <div className="panel">
