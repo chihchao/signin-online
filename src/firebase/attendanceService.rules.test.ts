@@ -355,6 +355,34 @@ describe('attendanceService (against Firestore rules via emulator)', () => {
       })
     })
 
+    it('backdates a manually-added record to an explicit timestamp instead of "now"', async () => {
+      await seedScenario({ sessionEndedAt: new Date('2026-01-02T00:00:00Z') })
+      const teacherDb = dbAs(TEACHER)
+      const backdate = new Date('2026-01-01T00:00:00Z') // the session's own createdAt from seedScenario
+
+      await assertSucceeds(addAttendanceRecord(teacherDb, SESSION_ID, COURSE_ID, STUDENT, 'present', backdate))
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        const snapshot = await getDocs(query(collection(db, 'attendance'), where('sessionId', '==', SESSION_ID)))
+        expect(snapshot.docs[0].data().timestamp.toDate()).toEqual(backdate)
+      })
+    })
+
+    it('defaults to "now" when no explicit timestamp is given (unchanged behavior)', async () => {
+      await seedScenario()
+      const teacherDb = dbAs(TEACHER)
+      const before = Date.now()
+
+      await assertSucceeds(addAttendanceRecord(teacherDb, SESSION_ID, COURSE_ID, STUDENT, 'present'))
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        const snapshot = await getDocs(query(collection(db, 'attendance'), where('sessionId', '==', SESSION_ID)))
+        expect(snapshot.docs[0].data().timestamp.toDate().getTime()).toBeGreaterThanOrEqual(before)
+      })
+    })
+
     it('denies a non-course-teacher from adding a record', async () => {
       await seedScenario()
 

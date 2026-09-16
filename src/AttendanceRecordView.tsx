@@ -131,7 +131,13 @@ export function AttendanceRecordView({ courseId, customStatuses, onClose }: Atte
     setBusyEmail(row.email)
     try {
       if (row.status === null) {
-        await addAttendanceRecord(db, selectedSessionId, courseId, row.email, status)
+        // Backdate a fresh 補登 to the session's own date once that
+        // session has ended — otherwise (still 進行中) "now" is a real
+        // class moment and addAttendanceRecord's default is correct.
+        const selectedSession = sessions.find((session) => session.id === selectedSessionId)
+        const backdateTo =
+          selectedSession && selectedSession.endedAt !== null ? selectedSession.createdAt : null
+        await addAttendanceRecord(db, selectedSessionId, courseId, row.email, status, backdateTo ?? undefined)
       } else {
         await updateAttendanceStatus(db, selectedSessionId, row.email, status)
       }

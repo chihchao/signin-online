@@ -118,13 +118,21 @@ export async function submitAttendance(
 }
 
 // 補登: a teacher records a status for a student who has no record yet
-// for this session.
+// for this session. `timestamp` defaults to now (e.g. the session is
+// still 進行中, so "now" is a real class moment) — pass the session's
+// own date explicitly when backfilling into an already-ended session
+// (e.g. a student added to the roster after the fact), so the record
+// reads as belonging to that session's day rather than to whenever the
+// teacher happened to click. firestore.rules' isValidTeacherAttendanceCreate
+// only requires `timestamp is timestamp`, not `== request.time`, exactly
+// so manual edits can backdate like this.
 export async function addAttendanceRecord(
   db: Firestore,
   sessionId: string,
   courseId: string,
   studentEmailRaw: string,
   status: AttendanceStatus,
+  timestamp?: Date,
 ): Promise<void> {
   const studentEmail = normalizeEmail(studentEmailRaw)
   await setDoc(doc(db, 'attendance', attendanceDocId(sessionId, studentEmail)), {
@@ -132,7 +140,7 @@ export async function addAttendanceRecord(
     courseId,
     studentEmail,
     status,
-    timestamp: serverTimestamp(),
+    timestamp: timestamp ?? serverTimestamp(),
   })
 }
 
