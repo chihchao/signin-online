@@ -91,7 +91,9 @@ npm run lint
 - `teachers/{email}`：教師白名單，email 為文件 ID
 - `courses/{courseId}`：課程，含課程名稱、教師清單、自訂出席狀態選項
 - `roster/{courseId}/students/{email}`：課程名冊
+- `activeSessions/{courseId}`：指向該課程「開始點名」流程應接續的 session，用於原子化解決多位共同教師同時按下開始點名的 race condition
 - `sessions/{sessionId}`：一次點名活動，`source` 欄位區分是「即時開課」（`live`，QR Code 對應的短效 session）還是「補登匯入」（`import`，回填過去日期、建立時即已結束）
+  - `sessions/{sessionId}/tokens/{tokenId}`：投影頁動態 QR Code 實際對應的短效 token，定期更新以防止截圖轉傳
 - `attendance/...`：簽到紀錄
 
 實際欄位與存取規則以 [firestore.rules](firestore.rules) 為準。
