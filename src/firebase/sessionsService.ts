@@ -123,7 +123,15 @@ export async function createToken(db: Firestore, sessionId: string): Promise<str
   return tokenRef.id
 }
 
-const FIRESTORE_BATCH_LIMIT = 500
+// Firestore caps a single batched write at 20 total get()/exists() calls
+// across every document it writes (on top of a 10-call cap per single
+// document) — much tighter than the 500-write-per-batch limit this used
+// to be sized against. Each attendance record written below evaluates
+// isValidTeacherAttendanceCreate, a fixed 3 calls (course, session,
+// roster) after inlining away its redundant double course-fetch — see
+// that rule's comment in firestore.rules. 5 records/batch (15 calls)
+// leaves a safety margin below 20 rather than cutting it exactly.
+const ATTENDANCE_CREATE_BATCH_LIMIT = 5
 
 // Ends the session (blocking further student check-ins) and marks
 // every roster member who still has no attendance record for it as
@@ -158,9 +166,9 @@ export async function endSession(
   const recordedEmails = new Set(attendanceSnap.docs.map((d) => d.data().studentEmail as string))
   const absentEmails = rosterSnap.docs.map((d) => d.id).filter((email) => !recordedEmails.has(email))
 
-  for (let start = 0; start < absentEmails.length; start += FIRESTORE_BATCH_LIMIT) {
+  for (let start = 0; start < absentEmails.length; start += ATTENDANCE_CREATE_BATCH_LIMIT) {
     const batch = writeBatch(db)
-    for (const studentEmail of absentEmails.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+    for (const studentEmail of absentEmails.slice(start, start + ATTENDANCE_CREATE_BATCH_LIMIT)) {
       batch.set(doc(db, 'attendance', attendanceDocId(sessionId, studentEmail)), {
         sessionId,
         courseId,

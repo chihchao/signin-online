@@ -231,13 +231,27 @@ service cloud.firestore {
     // through this. timestamp isn't pinned to request.time (manual
     // edits may backdate, per spec) but must at least be a real
     // Timestamp, not absent or malformed.
+    //
+    // Fetches the course document once and reuses it for both the
+    // teacher check and the status check, instead of going through
+    // isTeacherOfCourse()/isValidAttendanceStatus() (which would each
+    // fetch the same course document again independently) — so this
+    // costs a fixed 3 document-access calls per record (course,
+    // session, roster), not 3-4 depending on status. Firestore caps a
+    // single batched write at 20 total get()/exists() calls across
+    // every document it writes, so this constant-and-minimal cost is
+    // what importAttendanceForDate/endSession size their write batches
+    // against (see the comments on their batch-size constants).
     function isValidTeacherAttendanceCreate(attendanceId) {
       let data = request.resource.data;
+      let course = get(/databases/$(database)/documents/courses/$(data.courseId)).data;
 
-      return isTeacherOfCourse(data.courseId) &&
+      return isSignedIn() &&
+        request.auth.token.email in course.teacherEmails &&
         isValidAttendanceDocId(attendanceId, data) &&
         data.keys().hasOnly(['sessionId', 'courseId', 'studentEmail', 'status', 'timestamp']) &&
-        isValidAttendanceStatus(data.courseId, data.status) &&
+        (data.status == 'present' || data.status == 'absent' ||
+          data.status in course.get('customStatuses', [])) &&
         data.timestamp is timestamp &&
         get(/databases/$(database)/documents/sessions/$(data.sessionId)).data.courseId == data.courseId &&
         exists(/databases/$(database)/documents/courses/$(data.courseId)/roster/$(data.studentEmail));

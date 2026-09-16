@@ -94,6 +94,24 @@ describe('importAttendanceForDate (against Firestore rules via emulator)', () =>
     }
   })
 
+  it('writes an import spanning multiple write batches (batch size is smaller than the 500-write limit)', async () => {
+    // 12 roster-matched lines forces 3 batches at the current
+    // 5-per-batch size (chosen for Firestore's 20-get()/exists()-call-
+    // per-batch cap, not the 500-write cap) — proves the chunking loop
+    // doesn't drop or duplicate entries across a batch boundary.
+    await seedCourse('course-1', [TEACHER])
+    const emails = Array.from({ length: 12 }, (_, i) => `batch-student-${i}@example.com`)
+    await seedRoster('course-1', ...emails)
+    const lines = emails.map((email) => `${email},出席`).join('\n')
+
+    const result = await importAttendanceForDate(dbAs(TEACHER), 'course-1', TEACHER, CUSTOM_STATUSES, DATE, lines)
+
+    expect(result.writtenCount).toBe(12)
+    const records = await attendanceForCourse('course-1')
+    expect(records.map((r) => r.studentEmail).sort()).toEqual([...emails].sort())
+    expect(records.every((r) => r.status === 'present')).toBe(true)
+  })
+
   it('skips a line whose email is not in the roster, without failing the rest', async () => {
     await seedCourse('course-1', [TEACHER])
     await seedRoster('course-1', STUDENT_A)

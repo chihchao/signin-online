@@ -53,7 +53,13 @@ function normalizeEmailOrThrow(email: string): string {
   return normalized
 }
 
-const FIRESTORE_BATCH_LIMIT = 500
+// Firestore caps a single batched write at 20 total get()/exists() calls
+// across every document it writes — much tighter than the 500-write-
+// per-batch limit this used to be sized against. Each roster doc
+// written below only evaluates isTeacherOfCourse() (1 call: the course
+// document), so 15 docs/batch (15 calls) leaves a safety margin below
+// 20 rather than cutting it exactly.
+const ROSTER_WRITE_BATCH_LIMIT = 15
 
 export async function importRoster(
   db: Firestore,
@@ -61,9 +67,9 @@ export async function importRoster(
   rosterText: string,
 ): Promise<RosterEntry[]> {
   const entries = parseRosterList(rosterText)
-  for (let start = 0; start < entries.length; start += FIRESTORE_BATCH_LIMIT) {
+  for (let start = 0; start < entries.length; start += ROSTER_WRITE_BATCH_LIMIT) {
     const batch = writeBatch(db)
-    for (const entry of entries.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+    for (const entry of entries.slice(start, start + ROSTER_WRITE_BATCH_LIMIT)) {
       batch.set(rosterDoc(db, courseId, entry.email), { name: entry.name })
     }
     await batch.commit()

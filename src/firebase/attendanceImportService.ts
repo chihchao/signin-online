@@ -112,7 +112,21 @@ export interface ImportAttendanceResult {
   sessionId: string | null
 }
 
-const FIRESTORE_BATCH_LIMIT = 500
+// Firestore caps a single batched write at 20 total get()/exists() calls
+// across every document it writes (on top of a 10-call cap per single
+// document) — a much tighter ceiling than the 500-write-per-batch limit
+// these chunk sizes used to be based on. Each attendance record created
+// here evaluates isValidTeacherAttendanceCreate, which costs a fixed 3
+// calls (course, session, roster) after inlining away its redundant
+// double course-fetch — see that rule's comment. 5 records/batch (15
+// calls) leaves a safety margin below 20 rather than cutting it exactly.
+const ATTENDANCE_CREATE_BATCH_LIMIT = 5
+
+// Deleting an attendance record only evaluates isTeacherOfCourse (1
+// call), so a much larger batch is still safely under the 20-call cap;
+// kept well short of the theoretical 20 for the same margin-of-error
+// reasoning as above.
+const ATTENDANCE_DELETE_BATCH_LIMIT = 15
 
 // Best-effort cleanup after a batch write fails partway through: deletes
 // whatever attendance records did make it in for this session (earlier
@@ -131,9 +145,9 @@ async function rollbackImportSession(db: Firestore, courseId: string, sessionId:
     const writtenSnap = await getDocs(
       query(collection(db, 'attendance'), where('courseId', '==', courseId), where('sessionId', '==', sessionId)),
     )
-    for (let start = 0; start < writtenSnap.docs.length; start += FIRESTORE_BATCH_LIMIT) {
+    for (let start = 0; start < writtenSnap.docs.length; start += ATTENDANCE_DELETE_BATCH_LIMIT) {
       const batch = writeBatch(db)
-      for (const docSnapshot of writtenSnap.docs.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+      for (const docSnapshot of writtenSnap.docs.slice(start, start + ATTENDANCE_DELETE_BATCH_LIMIT)) {
         batch.delete(docSnapshot.ref)
       }
       await batch.commit()
@@ -181,9 +195,9 @@ export async function importAttendanceForDate(
   const sessionId = await createImportSession(db, courseId, teacherEmail, date)
 
   try {
-    for (let start = 0; start < toWrite.length; start += FIRESTORE_BATCH_LIMIT) {
+    for (let start = 0; start < toWrite.length; start += ATTENDANCE_CREATE_BATCH_LIMIT) {
       const batch = writeBatch(db)
-      for (const entry of toWrite.slice(start, start + FIRESTORE_BATCH_LIMIT)) {
+      for (const entry of toWrite.slice(start, start + ATTENDANCE_CREATE_BATCH_LIMIT)) {
         batch.set(doc(db, 'attendance', attendanceDocId(sessionId, entry.email)), {
           sessionId,
           courseId,

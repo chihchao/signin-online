@@ -71,6 +71,23 @@ describe('rosterService (against Firestore rules via emulator)', () => {
     ])
   })
 
+  it('imports a roster spanning multiple write batches (batch size is smaller than the 500-write limit)', async () => {
+    // 16 students forces 2 batches at the current 15-per-batch size
+    // (chosen for Firestore's 20-get()/exists()-call-per-batch cap, not
+    // the 500-write cap) — proves the chunking loop doesn't drop or
+    // duplicate entries across a batch boundary.
+    await seedCourse('course-1', [TEACHER])
+    const db = dbAs(TEACHER)
+    // Zero-padded so string sort order (listRoster's) matches creation order.
+    const emails = Array.from({ length: 16 }, (_, i) => `student-${String(i).padStart(2, '0')}@example.com`)
+    const pasteText = emails.map((email) => `${email},Student ${email}`).join('\n')
+
+    await assertSucceeds(importRoster(db, 'course-1', pasteText))
+
+    const roster = await listRoster(db, 'course-1')
+    expect(roster.map((entry) => entry.email)).toEqual(emails)
+  })
+
   it('lets a course teacher add a single student individually', async () => {
     await seedCourse('course-1', [TEACHER])
     const db = dbAs(TEACHER)

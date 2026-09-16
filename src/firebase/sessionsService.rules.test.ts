@@ -321,6 +321,28 @@ describe('sessionsService (against Firestore rules via emulator)', () => {
       })
     })
 
+    it('batch-marks absences spanning multiple write batches (batch size is smaller than the 500-write limit)', async () => {
+      // 12 roster members, none checked in, forces 3 batches at the
+      // current 5-per-batch size (chosen for Firestore's
+      // 20-get()/exists()-call-per-batch cap, not the 500-write cap) —
+      // proves the chunking loop doesn't drop or duplicate students
+      // across a batch boundary.
+      await seedCourse('course-1', [TEACHER])
+      const absentEmails = Array.from({ length: 12 }, (_, i) => `absent-${i}@example.com`)
+      await seedRoster('course-1', ...absentEmails)
+      const teacherDb = dbAs(TEACHER)
+      const sessionId = await startOrResumeSession(teacherDb, 'course-1', TEACHER)
+
+      await assertSucceeds(endSession(teacherDb, sessionId, 'course-1'))
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore
+        const attendanceSnap = await getDocs(collection(db, 'attendance'))
+        const byStudent = Object.fromEntries(attendanceSnap.docs.map((d) => [d.data().studentEmail, d.data().status]))
+        expect(byStudent).toEqual(Object.fromEntries(absentEmails.map((email) => [email, 'absent'])))
+      })
+    })
+
     it('denies a student check-in after the session has ended', async () => {
       await seedCourse('course-1', [TEACHER])
       const teacherDb = dbAs(TEACHER)
