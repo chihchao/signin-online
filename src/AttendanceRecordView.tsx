@@ -25,11 +25,38 @@ interface AttendanceRecordViewProps {
   onClose: () => void
 }
 
-function sessionLabel(session: SessionSummary): string {
+// Sessions sharing the same calendar date (e.g. a morning and an
+// afternoon 點名, or a live session plus a 補登 import for that day)
+// would otherwise render with an identical label — this assigns each a
+// 1-based "第 N 堂" ordinal, oldest first, but only among dates that
+// actually have more than one session; a lone session that day keeps
+// the plain date label unchanged.
+function dailyOrdinals(sessions: SessionSummary[]): Map<string, number> {
+  const byDate = new Map<string, SessionSummary[]>()
+  for (const session of sessions) {
+    const dateKey = formatDate(session.createdAt)
+    const group = byDate.get(dateKey)
+    if (group) {
+      group.push(session)
+    } else {
+      byDate.set(dateKey, [session])
+    }
+  }
+  const ordinals = new Map<string, number>()
+  for (const group of byDate.values()) {
+    if (group.length <= 1) continue
+    const sorted = [...group].sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0))
+    sorted.forEach((session, index) => ordinals.set(session.id, index + 1))
+  }
+  return ordinals
+}
+
+function sessionLabel(session: SessionSummary, ordinal?: number): string {
   const date = formatDate(session.createdAt)
-  if (session.endedAt === null) return `${date}（進行中）`
-  if (session.source === 'import') return `${date}（補登）`
-  return date
+  const base = ordinal === undefined ? date : `${date} 第 ${ordinal} 堂`
+  if (session.endedAt === null) return `${base}（進行中）`
+  if (session.source === 'import') return `${base}（補登）`
+  return base
 }
 
 // Owns its own session list (rather than taking a sessionId prop) so
@@ -131,6 +158,8 @@ export function AttendanceRecordView({ courseId, customStatuses, onClose }: Atte
     }
   }
 
+  const ordinals = dailyOrdinals(sessions)
+
   return (
     <section className="card">
       <h3>出席紀錄</h3>
@@ -152,7 +181,7 @@ export function AttendanceRecordView({ courseId, customStatuses, onClose }: Atte
             >
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {sessionLabel(session)}
+                  {sessionLabel(session, ordinals.get(session.id))}
                 </option>
               ))}
             </select>
@@ -160,7 +189,7 @@ export function AttendanceRecordView({ courseId, customStatuses, onClose }: Atte
         )}
         {sessions.length === 1 && (
           <span style={{ fontSize: '0.875rem', color: 'var(--color-muted-foreground)' }}>
-            {sessionLabel(sessions[0])}
+            {sessionLabel(sessions[0], ordinals.get(sessions[0].id))}
           </span>
         )}
       </div>
