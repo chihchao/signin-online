@@ -589,9 +589,9 @@ function RosterListDialog({ roster, onRemove, onClose }: RosterListDialogProps) 
   }, [])
 
   return (
-    <dialog ref={dialogRef} className="dialog" onClose={onClose}>
+    <dialog ref={dialogRef} className="dialog dialog--roster" onClose={onClose}>
       <h3>選課名單</h3>
-      <ul className="list list--scroll">
+      <ul className="list list--scroll list--scroll-lg">
         {roster.map((entry) => (
           <li key={entry.email} className="list-item">
             <span>{entry.name ? `${entry.name}（${entry.email}）` : entry.email}</span>
