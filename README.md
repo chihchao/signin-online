@@ -13,6 +13,7 @@
 - 自訂每堂課的出席狀態選項（如出席／請假／曠課等）
 - 匯入與管理課程名冊（`CourseManager`）
 - 查看每堂課的簽到紀錄，可手動調整學生出席狀態（`AttendanceRecordView`）
+- 補登忘記點名的某一天：貼上「email,狀態」清單＋日期，一次匯入點名記錄（`AttendanceImportView`）
 - 匯出出席紀錄為 CSV（`AttendanceExportView`）
 - 刪除課程
 
@@ -90,7 +91,7 @@ npm run lint
 - `teachers/{email}`：教師白名單，email 為文件 ID
 - `courses/{courseId}`：課程，含課程名稱、教師清單、自訂出席狀態選項
 - `roster/{courseId}/students/{email}`：課程名冊
-- `sessions/{sessionId}`：教師開課時建立的簽到場次（QR Code 對應的短效 session）
+- `sessions/{sessionId}`：一次點名活動，`source` 欄位區分是「即時開課」（`live`，QR Code 對應的短效 session）還是「補登匯入」（`import`，回填過去日期、建立時即已結束）
 - `attendance/...`：簽到紀錄
 
 實際欄位與存取規則以 [firestore.rules](firestore.rules) 為準。
@@ -104,12 +105,15 @@ src/
   ProjectionView.tsx       教師投影頁（動態 QR Code）
   CourseManager.tsx        課程建立/設定/名冊管理
   AttendanceRecordView.tsx 簽到紀錄檢視與調整
+  AttendanceImportView.tsx 補登指定日期的點名記錄（匯入）
   AttendanceExportView.tsx 出席紀錄 CSV 匯出
   MyAttendanceView.tsx     學生個人出席查詢
   firebase/                Firebase 初始化與各項資料服務（courses/roster/sessions/attendance/teachers）
 docs/
   gas-legacy-notes.md      舊版 GAS 方案的需求沿革與踩坑紀錄
   agents/                  Agent 協作相關文件（issue tracker、triage 標籤等）
+  specs/                   個別功能的設計規格文件
+  superpowers/plans/       對應規格的實作計畫（任務拆解、測試步驟）
 ```
 
 ## 給協作 Agent 的說明
