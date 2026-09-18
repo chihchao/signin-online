@@ -13,7 +13,7 @@ function readCheckinParams(): { sessionId: string; tokenId: string } | null {
 }
 
 function App() {
-  const { user, error, signIn, signOut } = useAuthUser()
+  const { user, isLoading, error, signIn, signOut } = useAuthUser()
   const [checkinParams, setCheckinParams] = useState(readCheckinParams)
   const [showMyAttendance, setShowMyAttendance] = useState(false)
   const [isProjecting, setIsProjecting] = useState(false)
@@ -141,6 +141,8 @@ function App() {
               </>
             ))}
         </>
+      ) : isLoading ? (
+        <p className="status-message status-message--info">確認登入狀態中…</p>
       ) : (
         <button type="button" className="btn btn-primary" onClick={() => signIn()}>
           使用 Google 登入

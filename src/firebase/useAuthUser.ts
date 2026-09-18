@@ -12,6 +12,7 @@ import { auth } from './config'
 
 export function useAuthUser() {
   const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -27,9 +28,14 @@ export function useAuthUser() {
       if (!cancelled) setError(describeError(err))
     })
 
+    // onAuthStateChanged always fires once with the restored session (or
+    // null) before anything else — until then we don't actually know
+    // whether the student is signed in, so callers must not render a
+    // "please sign in" screen based on `user` alone.
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       if (cancelled) return
       setUser(nextUser as User | null)
+      setIsLoading(false)
       // A successful sign-in supersedes any error from a previous
       // attempt (including a stale getRedirectResult rejection above).
       if (nextUser) setError(null)
@@ -59,5 +65,5 @@ export function useAuthUser() {
     }
   }
 
-  return { user, error, signIn, signOut }
+  return { user, isLoading, error, signIn, signOut }
 }

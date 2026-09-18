@@ -38,6 +38,20 @@ describe('useAuthUser', () => {
     expect(result.current.user).toBeNull()
   })
 
+  it('starts loading until Firebase reports the restored auth state, so callers can avoid flashing a signed-out screen', async () => {
+    const { result } = renderHook(() => useAuthUser())
+
+    expect(result.current.isLoading).toBe(true)
+
+    act(() => {
+      authStateCallback?.(null)
+    })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+  })
+
   it('checks for a pending redirect result on mount (mobile browsers cannot use signInWithPopup reliably)', () => {
     renderHook(() => useAuthUser())
 
